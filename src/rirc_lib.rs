@@ -9,14 +9,90 @@ use std::net::{IpAddr, Ipv4Addr};
 use diesel::prelude::*;
 use diesel::mysql::MysqlConnection;
 use dotenvy::dotenv;
+use crate::rirc_lib::Error::NoResultInDatabase;
 use super::rirc_schema::*;
 
-/// Enum holding errors in the projet,
+
+/// Holding commands that can be handled by our server
+#[derive(PartialEq, Clone)]
+pub enum Commands {
+    // Supported commands
+    CAP, NICK, PRIVMSG, JOIN, MOTD, PING, PONG, QUIT,
+
+    // Unsupported commands
+    SKIP, // Call sent for unsupported commands
+
+    ADMIN, AWAY, CNOTE, CONNECT, DIE, ENCAP, ERROR, HELP, INFO, INVITE, ISON, KICK, KILL,
+    KNOCK, LINKS, LIST, LUSERS, MODE, NAMES, NOTICE, OPER, PART, PASS, REHASH, RULES, SERVER,
+    SERVICE, SERVLIST, SQUERY, SQUIT, SETNAME, SILENCE, STATS, SUMMON, TIME, TOPIC, TRACE,
+    USER, USERHOST, USERIP, USERS, VERSION, WALLOPS, WATCH, WHO, WHOIS, WHOWAS,
+}
+
+impl Commands {
+    /// Public function returning the request type as `Commands` from a `&str`,
+    ///
+    /// Example: `from_str("CAP").unwrap();` will return `CAP`,
+    ///
+    /// Can return `Error::InvalidRequest`
+    pub fn from_str(content: &str) -> Result<Commands, Error> {
+        use self::Commands::*;
+        match content {
+            "CAP" => Ok(CAP),
+            "NICK" => Ok(NICK),
+            "PRIVMSG" => Ok(PRIVMSG),
+            "JOIN" => Ok(JOIN),
+            "MOTD" => Ok(MOTD),
+            "PING" => Ok(PING),
+            "PONG" => Ok(PONG),
+            "QUIT" => Ok(QUIT),
+            _ => Ok(SKIP), //Err(Error::InvalidRequest),
+        }
+    }
+}
+
+/// Holding requests sent by clients in a struct
+#[derive(Clone)]
+pub struct Request {
+    pub command: Commands,
+    pub content: String,
+}
+
+impl Request {
+    pub fn new(request: String) -> Result<Request, Error> {
+        // Splitting request
+        let binding = request.clone();
+        let request_split = binding.split(" ");
+
+        // Send first part of request to RequestType::from_str()
+        let command_str  = request_split.clone().nth(0).unwrap();
+        let command = Commands::from_str(command_str)?;
+
+        // Generate `content` from split, skip first part
+        let mut content = request_split.clone().nth(1).unwrap().to_string();
+        for i in request_split.skip(2) {
+            content = content.to_owned() + " " + i
+        }
+
+        Ok(Request {
+            command,
+            content,
+        })
+    }
+}
+
+/// Enum holding general errors in the project
+#[derive(Debug)]
+pub enum Error {
+    InvalidRequest,
+    NoResultInDatabase,
+}
+
+/// Enum holding errors about the IRC Protocol,
 ///
-// TODO: use it all day
 // Errors are sent in a response containing only their number
 // https://www.rfc-editor.org/rfc/rfc1459#section-6
-pub enum Error {
+#[derive(Debug)]
+pub enum IrcError {
     UnknownError, // 400: ERR_UNKNOWNERROR
     NoSuchNick, // 401: ERR_NOSUCHNICK
     NoSuchServer, // 402: ERR_NOSUCHSERVER
@@ -27,20 +103,22 @@ pub enum Error {
     YouWillBeBanned, // 466: ERR_YOUWILLBEBANNED
 }
 
-impl Error {
+impl IrcError {
     /// Public function returning `u32` corresponding to error name,
     ///
-    /// Example: `Error::NicknameInUse.to_u32()`
+    /// Example: `IrcError::NicknameInUse.to_u32()`
     pub fn to_u32(self) -> u32 {
+        use self::IrcError::*;
+
         match self {
-            Error::UnknownError => 400,
-            Error::NoSuchNick => 401,
-            Error::NoSuchServer => 402,
-            Error::NoSuchChannel => 403,
-            Error::CannotSendToChan => 404,
-            Error::NicknameInUse => 433,
-            Error::YoureBannedCreep => 465,
-            Error::YouWillBeBanned => 466,
+            UnknownError => 400,
+            NoSuchNick => 401,
+            NoSuchServer => 402,
+            NoSuchChannel => 403,
+            CannotSendToChan => 404,
+            NicknameInUse => 433,
+            YoureBannedCreep => 465,
+            YouWillBeBanned => 466,
         }
     }
 }
@@ -85,17 +163,21 @@ pub struct NewUser<'a> {
 /// let connection = &mut establish_connection();
 /// get_user(connection, "johndoe");
 /// ```
-pub fn get_user<'a>(connection: &mut MysqlConnection,  w_name: &str) -> User {
+pub fn get_user<'a>(connection: &mut MysqlConnection,  w_name: &str) -> Result<User, Error> {
     use crate::rirc_schema::users::dsl::*;
 
-    users
+    let mut user = users
         .limit(1)
         .filter(name.eq(w_name))
         .load::<User>(connection)
         .expect("Error loading users")
-        .into_iter()
-        .nth(0)
-        .unwrap()
+        .into_iter();
+
+    if user.len() > 0 {
+        Ok(user.nth(0).unwrap())
+    } else {
+        Err(NoResultInDatabase)
+    }
 }
 
 /// Public function that handles creating users,
@@ -141,18 +223,22 @@ struct NewBan<'a> {
 /// get_channel(connection, &true, "1.1.1.1");
 /// get_channel(connection, &false, "johndoe");
 /// ```
-pub fn get_ban<'a>(connection: &mut MysqlConnection, w_is_ip: &bool, w_name: &str) -> Ban {
+pub fn get_ban<'a>(connection: &mut MysqlConnection, w_is_ip: &bool, w_name: &str) -> Result<Ban,Error> {
     use crate::rirc_schema::bans::dsl::*;
 
-    bans
+    let mut ban = bans
         .limit(1)
         .filter(is_ip.eq(w_is_ip))
         .filter(content.eq(w_name))
         .load::<Ban>(connection)
         .expect("Error loading bans")
-        .into_iter()
-        .nth(0)
-        .unwrap()
+        .into_iter();
+
+    if ban.len() > 0 {
+        Ok(ban.nth(0).unwrap())
+    } else {
+        Err(NoResultInDatabase)
+    }
 }
 
 /// Public function that handles creating bans,
@@ -204,17 +290,21 @@ pub struct NewChannel<'a> {
 /// let connection = &mut establish_connection();
 /// get_channel(connection, "name");
 /// ```
-pub fn get_channel<'a>(connection: &mut MysqlConnection, w_name: &str) -> Channel {
+pub fn get_channel<'a>(connection: &mut MysqlConnection, w_name: &str) -> Result<Channel, Error> {
     use crate::rirc_schema::channels::dsl::*;
 
-    channels
+    let mut channel = channels
         .limit(1)
         .filter(name.eq(w_name))
         .load::<Channel>(connection)
         .expect("Error loading channels")
-        .into_iter()
-        .nth(0)
-        .unwrap()
+        .into_iter();
+
+    if channel.len() == 1 {
+        Ok(channel.nth(0).unwrap())
+    } else {
+        Err(NoResultInDatabase)
+    }
 }
 
 /// Public function that handles creating channels,
@@ -258,17 +348,21 @@ struct NewSetting<'a> {
 /// let connection = &mut establish_connection();
 /// get_setting(connection, "name");
 /// ```
-pub fn get_setting<'a>(connection: &mut MysqlConnection, w_key: &str) -> Setting {
+pub fn get_setting<'a>(connection: &mut MysqlConnection, w_key: &str) -> Result<Setting, Error> {
     use crate::rirc_schema::settings::dsl::*;
 
-    settings
+    let mut setting = settings
         .limit(1)
         .filter(key.eq(w_key))
         .load::<Setting>(connection)
         .expect("Error loading settings")
-        .into_iter()
-        .nth(0)
-        .unwrap()
+        .into_iter();
+
+    if setting.len() > 0 {
+        Ok(setting.nth(0).unwrap())
+    } else {
+        Err(NoResultInDatabase)
+    }
 }
 
 /// Public function that handles creating settings,

@@ -2,7 +2,7 @@ mod rirc_conn_handler;
 mod rirc_schema;
 mod rirc_lib;
 
-use std::net::{IpAddr, SocketAddr, TcpListener};
+use std::net::{SocketAddr, TcpListener};
 use std::thread::spawn;
 use dotenvy::dotenv;
 use log::{debug, info, trace, warn};
@@ -18,7 +18,7 @@ fn main() {
     let connection = &mut establish_connection();
 
     // This gets settings from database to create a `Server`.
-    let server = Server::from_settings(get_setting(connection, "ip"), get_setting(connection, "port"));
+    let server = Server::from_settings(get_setting(connection, "ip").unwrap(), get_setting(connection, "port").unwrap());
 
     let socket = SocketAddr::new(server.get_addr(), server.get_port());
 
