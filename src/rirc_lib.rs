@@ -13,7 +13,9 @@ use super::rirc_schema::*;
 
 /// Enum holding errors in the projet,
 ///
-/// TODO: use it all day
+// TODO: use it all day
+// Errors are sent in a response containing only their number
+// https://www.rfc-editor.org/rfc/rfc1459#section-6
 pub enum Error {
     UnknownError, // 400: ERR_UNKNOWNERROR
     NoSuchNick, // 401: ERR_NOSUCHNICK
@@ -23,7 +25,24 @@ pub enum Error {
     NicknameInUse, // 433: ERR_NICKNAMEINUSE
     YoureBannedCreep, // 465: ERR_YOUREBANNEDCREEP
     YouWillBeBanned, // 466: ERR_YOUWILLBEBANNED
-    InvalidUsername, // 468: ERR_INVALIDUSERNAME
+}
+
+impl Error {
+    /// Public function returning `u32` corresponding to error name,
+    ///
+    /// Example: `Error::NicknameInUse.to_u32()`
+    pub fn to_u32(self) -> u32 {
+        match self {
+            Error::UnknownError => 400,
+            Error::NoSuchNick => 401,
+            Error::NoSuchServer => 402,
+            Error::NoSuchChannel => 403,
+            Error::CannotSendToChan => 404,
+            Error::NicknameInUse => 433,
+            Error::YoureBannedCreep => 465,
+            Error::YouWillBeBanned => 466,
+        }
+    }
 }
 
 /// Public function that handles connecting to MySQL with Diesel using `DATABASE_URL`,

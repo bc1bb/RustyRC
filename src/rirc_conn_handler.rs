@@ -5,6 +5,7 @@ use std::net::TcpStream;
 use std::thread::sleep;
 use std::time::Duration;
 use log::debug;
+use crate::rirc_lib::Error;
 
 /// Public function that handles `TcpStream`,
 ///
@@ -30,16 +31,13 @@ pub fn handler(mut stream: TcpStream) {
 
             // client says i'm connected
             // (CAP LS & NICK xxx & USER xxxx localhost : RealName)
-            if i == 3 {
-                stream.write(":localhost 001 guillaume :Welcome!\n".as_ref()).unwrap();
+            if i == 2 {
+                stream.write(
+                    (Error::NicknameInUse.to_u32().to_string() + "\n")
+                        .as_ref()).unwrap();
                 println!("non");
             }
 
-            // client pings
-            if i == 5 {
-                stream.write("PONG localhost\n".as_ref()).unwrap();
-                println!("non");
-            }
         }
     }
 }
