@@ -32,6 +32,7 @@ fn main() {
             debug!("New connection from {}", stream.as_ref().unwrap().peer_addr().unwrap());
 
             handler(stream.unwrap());
+            // TODO: Return a user from handler() and change its state on DB when it logs off
         });
     }
 }

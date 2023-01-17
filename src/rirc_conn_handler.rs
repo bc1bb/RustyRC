@@ -17,23 +17,28 @@ use log::debug;
 /// }
 /// ```
 pub fn handler(mut stream: TcpStream) {
+    // TODO: MAKE THIS LESS BASIC ???
+    // Works with irssi
     loop {
-        debug!("PINGED !");
-        stream.write("PING: 1234".as_ref()).unwrap();
+        let reader = BufReader::new(stream.try_clone().unwrap());
 
-        let buf_reader = BufReader::new(&mut stream);
+        let mut i = 0;
+        for line in reader.lines() {
+            i += 1;
+            let line = line.unwrap_or_else(|e| { panic!("{}", e) });
+            println!("{} {}", i, line);
 
-        let received: Vec<_> = buf_reader
-            .lines()
-            .map(|result| result.unwrap())
-            .take_while(|line| !line.is_empty())
-            .collect();
+            // client says i'm connected
+            // (CAP LS & NICK xxx & USER xxxx localhost : RealName)
+            if i == 3 {
+                stream.write(":localhost 001 guillaume :Welcome!\n".as_ref()).unwrap();
+                println!("non");
+            }
 
-        for (i, line) in received.iter().enumerate() {
-            if line == &"PONG: 1234".to_string() {
-                debug!("PONGED !");
-            } else {
-                return;
+            // client pings
+            if i == 5 {
+                stream.write("PONG localhost\n".as_ref()).unwrap();
+                println!("non");
             }
         }
     }
