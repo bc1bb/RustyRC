@@ -11,6 +11,21 @@ use diesel::mysql::MysqlConnection;
 use dotenvy::dotenv;
 use super::rirc_schema::*;
 
+/// Enum holding errors in the projet,
+///
+/// TODO: use it all day
+pub enum Error {
+    UnknownError, // 400: ERR_UNKNOWNERROR
+    NoSuchNick, // 401: ERR_NOSUCHNICK
+    NoSuchServer, // 402: ERR_NOSUCHSERVER
+    NoSuchChannel, // 403: ERR_NOSUCHCHANNEL
+    CannotSendToChan, // 404: ERR_CANNOTSENDTOCHAN
+    NicknameInUse, // 433: ERR_NICKNAMEINUSE
+    YoureBannedCreep, // 465: ERR_YOUREBANNEDCREEP
+    YouWillBeBanned, // 466: ERR_YOUWILLBEBANNED
+    InvalidUsername, // 468: ERR_INVALIDUSERNAME
+}
+
 /// Public function that handles connecting to MySQL with Diesel using `DATABASE_URL`,
 ///
 /// Example:
