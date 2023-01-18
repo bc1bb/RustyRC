@@ -5,7 +5,7 @@ use std::net::TcpStream;
 use std::thread::sleep;
 use std::time::Duration;
 use log::debug;
-use crate::rirc_lib::{Commands, create_user, Error, establish_connection, get_user, IrcError, Request, User};
+use crate::rirc_lib::*;
 use crate::rirc_lib::Commands::*;
 use crate::rirc_lib::IrcError::*;
 
@@ -20,6 +20,7 @@ use crate::rirc_lib::IrcError::*;
 /// }
 /// ```
 pub fn handler(mut stream: TcpStream) {
+    let addr = stream.peer_addr().unwrap().ip();
     loop {
         let reader = BufReader::new(stream.try_clone().unwrap());
 
@@ -32,15 +33,15 @@ pub fn handler(mut stream: TcpStream) {
             // TODO: implement more
             let request = Request::new(line).unwrap();
 
-            worker(request);
+            worker(request, addr.to_string());
         }
     }
 }
 
-fn worker(request: Request) {
+fn worker(request: Request, addr: String) {
     match request.command {
         CAP => return,
-        NICK => nick(request.content).unwrap(),
+        NICK => nick(request.content, addr).unwrap(),
         PRIVMSG => {}
         JOIN => {}
         MOTD => {}
@@ -52,7 +53,7 @@ fn worker(request: Request) {
     };
 }
 
-fn nick(content: String) -> Result<(), IrcError> {
+fn nick(content: String, addr: String) -> Result<(), IrcError> {
     let connection = &mut establish_connection();
     let db_user = get_user(connection, content.as_str());
 
@@ -64,7 +65,7 @@ fn nick(content: String) -> Result<(), IrcError> {
             else { Ok(()) }
         }
         Err(_) => {
-            create_user(connection, content.as_str(), "0.0.0.0", &true);
+            create_user(connection, content.as_str(), addr.as_str(), &true);
             Ok(())
         }
     }
