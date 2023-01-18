@@ -199,6 +199,34 @@ pub fn create_user(connection: &mut MysqlConnection, name: &str,
         .expect("Error saving new user");
 }
 
+/// Public function that handles editing an existing user,
+///
+/// Example:
+/// ```rust
+/// let connection = &mut establish_connection();
+/// edit_user(connection, "johndoe", "1.2.3.4", &true);
+/// ```
+pub fn edit_user(connection: &mut MysqlConnection, w_name: &str,
+                   w_last_ip: &str, w_is_connected: &bool) -> Result<(), Error> {
+    use crate::rirc_schema::users::dsl;
+
+    if get_user(connection, w_name).is_err() {
+        return Err(NoResultInDatabase);
+    }
+
+    diesel::update(users::table)
+        .set(dsl::last_ip.eq(w_last_ip))
+        .execute(connection)
+        .expect("Error edit user");
+
+    diesel::update(users::table)
+        .set(dsl::is_connected.eq(w_is_connected))
+        .execute(connection)
+        .expect("Error editing user");
+
+    Ok(())
+}
+
 /// Queryable private struct linked to database using Diesel.
 #[derive(Queryable)]
 pub struct Ban {

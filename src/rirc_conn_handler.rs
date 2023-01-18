@@ -4,6 +4,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
 use std::thread::sleep;
 use std::time::Duration;
+use diesel::MysqlConnection;
 use log::debug;
 use crate::rirc_lib::*;
 use crate::rirc_lib::Commands::*;
@@ -19,7 +20,7 @@ use crate::rirc_lib::IrcError::*;
 ///     handler(stream.unwrap())
 /// }
 /// ```
-pub fn handler(mut stream: TcpStream) {
+pub fn handler(connection: &mut MysqlConnection, mut stream: TcpStream) {
     let addr = stream.peer_addr().unwrap().ip();
     loop {
         let reader = BufReader::new(stream.try_clone().unwrap());
@@ -33,38 +34,49 @@ pub fn handler(mut stream: TcpStream) {
             // TODO: implement more
             let request = Request::new(line).unwrap();
 
-            worker(request, addr.to_string());
+            let status = worker(connection, request, addr.to_string());
+
+            if status.is_err() {
+                stream.write(
+                    (status.err().unwrap().to_u32().to_string() + "\n\n").as_ref()
+                ).unwrap();
+            }
         }
     }
 }
 
-fn worker(request: Request, addr: String) {
-    match request.command {
-        CAP => return,
-        NICK => nick(request.content, addr).unwrap(),
-        PRIVMSG => {}
-        JOIN => {}
-        MOTD => {}
-        PING => {}
-        PONG => {}
-        QUIT => {}
-        SKIP => return,
-        _ => return,
-    };
+fn worker(connection: &mut MysqlConnection, request: Request, addr: String) -> Result<(), IrcError> {
+    return match request.command {
+        CAP => Ok(()), // Skip CAP commands
+        NICK => nick(connection, request.content, addr),
+        PRIVMSG => Ok(()),
+        JOIN => Ok(()),
+        MOTD => Ok(()),
+        PING => Ok(()),
+        PONG => Ok(()),
+        QUIT => Ok(()),
+        SKIP => Ok(()),
+        _ => Ok(()),
+    }
 }
 
-fn nick(content: String, addr: String) -> Result<(), IrcError> {
-    let connection = &mut establish_connection();
+fn nick(connection: &mut MysqlConnection, content: String, addr: String) -> Result<(), IrcError> {
     let db_user = get_user(connection, content.as_str());
 
 
     return match db_user {
         Ok(_) => {
-            // A user with same name is already logged in
-            if db_user.unwrap().is_connected { Err(NicknameInUse) }
-            else { Ok(()) }
+            if db_user.unwrap().is_connected {
+                // A user with same name is already logged in
+                Err(NicknameInUse)
+            } else {
+                // A user with same name has already logged in but logged off since then
+                edit_user(connection, content.as_str(), addr.as_str(), &true).unwrap();
+                Ok(())
+            }
         }
         Err(_) => {
+            // Username has never logged in
             create_user(connection, content.as_str(), addr.as_str(), &true);
             Ok(())
         }
