@@ -6,7 +6,7 @@ use std::net::{SocketAddr, TcpListener};
 use std::thread::spawn;
 use dotenvy::dotenv;
 use log::{debug, info, trace, warn};
-use crate::rirc_lib::{create_user, edit_user, establish_connection, get_setting, Server};
+use crate::rirc_lib::{create_user, edit_user, edit_user_from_thread_id, establish_connection, get_setting, Server};
 use crate::rirc_conn_handler::handler;
 
 /// Main function, holds threads, database connection
@@ -27,14 +27,16 @@ fn main() {
 
     debug!("Starting connection manager...");
     // Spawning a thread of handler() for each incoming connection
-    for stream in listener.incoming() {
-        spawn(|| {
+    for (thread_id, stream) in listener.incoming().enumerate() {
+        spawn(move || {
             let connection = &mut establish_connection();
 
             let addr = stream.as_ref().unwrap().peer_addr().unwrap();
             debug!("New connection from {}", addr);
 
-            handler(connection, stream.unwrap());
+            handler(connection, stream.unwrap(), i32::try_from(thread_id).unwrap());
+
+            edit_user_from_thread_id(connection, &i32::try_from(thread_id).unwrap(), &false).unwrap();
         });
     }
 }

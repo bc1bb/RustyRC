@@ -13,11 +13,23 @@ use crate::rirc_lib::Error::NoResultInDatabase;
 use super::rirc_schema::*;
 
 
+/// Holding responses sent by server in a struct
+#[derive(Clone)]
+pub struct Response {
+    pub content: String,
+}
+
+impl Response {
+    pub fn new(content: String) -> Response {
+        Response { content }
+    }
+}
+
 /// Holding commands that can be handled by our server
 #[derive(PartialEq, Clone)]
 pub enum Commands {
     // Supported commands
-    CAP, NICK, PRIVMSG, JOIN, MOTD, PING, PONG, QUIT,
+    CAP, NICK, PRIVMSG, JOIN, MOTD, PING, PONG, QUIT, USER,
 
     // Unsupported commands
     SKIP, // Call sent for unsupported commands
@@ -25,7 +37,7 @@ pub enum Commands {
     ADMIN, AWAY, CNOTE, CONNECT, DIE, ENCAP, ERROR, HELP, INFO, INVITE, ISON, KICK, KILL,
     KNOCK, LINKS, LIST, LUSERS, MODE, NAMES, NOTICE, OPER, PART, PASS, REHASH, RULES, SERVER,
     SERVICE, SERVLIST, SQUERY, SQUIT, SETNAME, SILENCE, STATS, SUMMON, TIME, TOPIC, TRACE,
-    USER, USERHOST, USERIP, USERS, VERSION, WALLOPS, WATCH, WHO, WHOIS, WHOWAS,
+    USERHOST, USERIP, USERS, VERSION, WALLOPS, WATCH, WHO, WHOIS, WHOWAS,
 }
 
 impl Commands {
@@ -45,6 +57,7 @@ impl Commands {
             "PING" => Ok(PING),
             "PONG" => Ok(PONG),
             "QUIT" => Ok(QUIT),
+            "USER" => Ok(USER),
             _ => Ok(SKIP), //Err(Error::InvalidRequest),
         }
     }
@@ -91,8 +104,9 @@ pub enum Error {
 ///
 // Errors are sent in a response containing only their number
 // https://www.rfc-editor.org/rfc/rfc1459#section-6
-#[derive(Debug)]
+#[derive(Debug,PartialEq)]
 pub enum IrcError {
+    None, // (=unimplemented)
     UnknownError, // 400: ERR_UNKNOWNERROR
     NoSuchNick, // 401: ERR_NOSUCHNICK
     NoSuchServer, // 402: ERR_NOSUCHSERVER
@@ -120,6 +134,25 @@ impl IrcError {
             NicknameInUse => 433,
             YoureBannedCreep => 465,
             YouWillBeBanned => 466,
+        }
+    }
+
+    /// Public function returning `&str` corresponding to error name,
+    ///
+    /// Example: `IrcError::NicknameInUse.to_string()`
+    pub fn to_str(&self) -> &str {
+        use self::IrcError::*;
+
+        match self {
+            None => "",
+            UnknownError => ":Unknown Error",
+            NoSuchNick => ":No Such Nick",
+            NoSuchServer => ":No Such Server",
+            NoSuchChannel => ":No Such Channel",
+            CannotSendToChan => ":Cannot Send To Chan",
+            NicknameInUse => ":Nickname In Use",
+            YoureBannedCreep => ":You're Banned, Creep",
+            YouWillBeBanned => ":You Will Be Banned",
         }
     }
 }

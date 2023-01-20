@@ -1,11 +1,11 @@
 //! RustyRC Connection Handler
 
 use std::io::{BufRead, BufReader, Write};
-use std::net::TcpStream;
+use std::net::{IpAddr, TcpStream};
 use std::thread::sleep;
 use std::time::Duration;
 use diesel::MysqlConnection;
-use log::debug;
+use log::{debug, trace};
 use crate::rirc_lib::*;
 use crate::rirc_lib::Commands::*;
 use crate::rirc_lib::IrcError::*;
@@ -20,8 +20,9 @@ use crate::rirc_lib::IrcError::*;
 ///     handler(stream.unwrap())
 /// }
 /// ```
-pub fn handler(connection: &mut MysqlConnection, mut stream: TcpStream) {
+pub fn handler(connection: &mut MysqlConnection, mut stream: TcpStream, thread_id: i32) {
     let addr = stream.peer_addr().unwrap().ip();
+
     loop {
         let reader = BufReader::new(stream.try_clone().unwrap());
 
@@ -29,38 +30,58 @@ pub fn handler(connection: &mut MysqlConnection, mut stream: TcpStream) {
         // send request to worker()
         for line in reader.lines() {
             let line = line.unwrap_or_else(|e| { panic!("{}", e) });
+            trace!("{} [{}]: {}", addr, thread_id.to_string(), line.clone());
 
-            // Ignore invalid request, they are most likely unimplemented stuff for now
-            // TODO: implement more
             let request = Request::new(line).unwrap();
 
-            let status = worker(connection, request, addr.to_string());
-
-            if status.is_err() {
-                stream.write(
-                    (status.err().unwrap().to_u32().to_string() + "\n\n").as_ref()
-                ).unwrap();
+            // Skip CAP commands
+            if request.clone().command != CAP {
+                match worker(connection, request, addr.to_string(), thread_id) {
+                    Ok(res) => {
+                        if res.content == "BYE BYE" { return }
+                        else { stream.write((res.content + "\n").as_ref()).unwrap(); }
+                    }
+                    Err(err) => {
+                        stream.write((err.to_u32().to_string() + " " + err.to_str() + "\n").as_ref()).unwrap();
+                        if err == YoureBannedCreep { return }
+                    }
+                }
             }
         }
     }
 }
 
-fn worker(connection: &mut MysqlConnection, request: Request, addr: String) -> Result<(), IrcError> {
-    return match request.command {
-        CAP => Ok(()), // Skip CAP commands
-        NICK => nick(connection, request.content, addr),
-        PRIVMSG => Ok(()),
-        JOIN => Ok(()),
-        MOTD => Ok(()),
-        PING => Ok(()),
-        PONG => Ok(()),
-        QUIT => Ok(()),
-        SKIP => Ok(()),
-        _ => Ok(()),
+fn is_banned(connection: &mut MysqlConnection, addr: String) -> bool {
+    return match get_ban(connection, &true, addr.as_str()) {
+        Ok(_) => true,
+        Err(_) => false
     }
 }
 
-fn nick(connection: &mut MysqlConnection, content: String, addr: String) -> Result<(), IrcError> {
+fn worker(connection: &mut MysqlConnection, request: Request, addr: String, thread_id: i32) -> Result<Response, IrcError> {
+    if is_banned(connection, addr.clone()) {
+        return Err(YoureBannedCreep);
+    }
+
+    return match request.command {
+        NICK => nick(connection, request.content, addr, thread_id),
+        PRIVMSG => unimplemented(),
+        JOIN => unimplemented(),
+        MOTD => unimplemented(),
+        PING => unimplemented(),
+        PONG => unimplemented(),
+        QUIT => quit(connection, thread_id),
+        USER => user(connection, request.content),
+        SKIP => unimplemented(),
+        _ => unimplemented(),
+    }
+}
+
+fn user(connection: &mut MysqlConnection, content: String) -> Result<Response, IrcError> {
+    Ok(Response::new(":localhost 001 guillaume :Welcome!".to_string()))
+}
+
+fn nick(connection: &mut MysqlConnection, content: String, addr: String, thread_id: i32) -> Result<Response, IrcError> {
     let db_user = get_user(connection, content.as_str());
 
 
@@ -71,14 +92,25 @@ fn nick(connection: &mut MysqlConnection, content: String, addr: String) -> Resu
                 Err(NicknameInUse)
             } else {
                 // A user with same name has already logged in but logged off since then
-                edit_user(connection, content.as_str(), addr.as_str(), &true).unwrap();
-                Ok(())
+                edit_user(connection, content.as_str(), addr.as_str(), &true, &thread_id).unwrap();
+                Ok(Response::new(":localhost 001 guillaume :Welcome!".to_string()))
             }
         }
         Err(_) => {
             // Username has never logged in
-            create_user(connection, content.as_str(), addr.as_str(), &true);
-            Ok(())
+            create_user(connection, content.as_str(), addr.as_str(), &true, &thread_id);
+            Ok(Response::new(":localhost 001 guillaume :Welcome!".to_string()))
         }
     }
+}
+
+fn quit(connection: &mut MysqlConnection, thread_id: i32) -> Result<Response, IrcError> {
+    edit_user_from_thread_id(connection, &thread_id, &false).unwrap();
+
+    // Send an empty response, we don't care about it
+    Ok(Response::new("BYE BYE".to_string()))
+}
+
+fn unimplemented() -> Result<Response, IrcError> {
+    Err(None)
 }
