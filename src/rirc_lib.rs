@@ -107,10 +107,11 @@ impl IrcError {
     /// Public function returning `u32` corresponding to error name,
     ///
     /// Example: `IrcError::NicknameInUse.to_u32()`
-    pub fn to_u32(self) -> u32 {
+    pub fn to_u32(&self) -> u32 {
         use self::IrcError::*;
 
         match self {
+            None => 0,
             UnknownError => 400,
             NoSuchNick => 401,
             NoSuchServer => 402,
@@ -145,6 +146,7 @@ pub struct User {
     pub name: String,
     pub last_ip: String,
     pub is_connected: bool,
+    pub thread_id: i32,
 }
 
 /// Insertable public struct linked to database using Diesel.
@@ -154,6 +156,7 @@ pub struct NewUser<'a> {
     pub name: &'a str,
     pub last_ip: &'a str,
     pub is_connected: &'a bool,
+    pub thread_id: &'a i32,
 }
 
 /// Public function that will return a `User` when given its `name`,
@@ -180,6 +183,30 @@ pub fn get_user<'a>(connection: &mut MysqlConnection,  w_name: &str) -> Result<U
     }
 }
 
+/// Public function that will return a `User` when given its `thread_id`,
+///
+/// Example:
+/// ```rust
+/// let connection = &mut establish_connection();
+/// get_user_from_thread_id(connection, &24);
+/// ```
+pub fn get_user_from_thread_id<'a>(connection: &mut MysqlConnection,  w_thread_id: &i32) -> Result<User, Error> {
+    use crate::rirc_schema::users::dsl::*;
+
+    let mut user = users
+        .limit(1)
+        .filter(thread_id.eq(w_thread_id))
+        .load::<User>(connection)
+        .expect("Error loading users")
+        .into_iter();
+
+    if user.len() > 0 {
+        Ok(user.nth(0).unwrap())
+    } else {
+        Err(NoResultInDatabase)
+    }
+}
+
 /// Public function that handles creating users,
 ///
 /// Example:
@@ -187,11 +214,17 @@ pub fn get_user<'a>(connection: &mut MysqlConnection,  w_name: &str) -> Result<U
 /// let connection = &mut establish_connection();
 /// create_user(connection, "johndoe", "1.2.3.4", &true);
 /// ```
-pub fn create_user(connection: &mut MysqlConnection, name: &str,
-                   last_ip: &str, is_connected: &bool) {
+pub fn create_user(connection: &mut MysqlConnection, w_name: &str,
+                   w_last_ip: &str, w_is_connected: &bool, w_thread_id: &i32) {
+    use crate::rirc_schema::users::dsl::*;
     use crate::rirc_schema::users;
 
-    let new_user = NewUser { name, last_ip, is_connected };
+    let new_user = NewUser {
+        name: w_name,
+        last_ip: w_last_ip,
+        is_connected: w_is_connected,
+        thread_id: w_thread_id
+    };
 
     diesel::insert_into(users::table)
         .values(&new_user)
@@ -199,28 +232,60 @@ pub fn create_user(connection: &mut MysqlConnection, name: &str,
         .expect("Error saving new user");
 }
 
-/// Public function that handles editing an existing user,
+/// Public function that handles editing an existing user from its username,
 ///
 /// Example:
 /// ```rust
 /// let connection = &mut establish_connection();
-/// edit_user(connection, "johndoe", "1.2.3.4", &true);
+/// edit_user(connection, "johndoe", "1.2.3.4", &true, &24);
 /// ```
 pub fn edit_user(connection: &mut MysqlConnection, w_name: &str,
-                   w_last_ip: &str, w_is_connected: &bool) -> Result<(), Error> {
-    use crate::rirc_schema::users::dsl;
+                   w_last_ip: &str, w_is_connected: &bool, w_thread_id: &i32) -> Result<(), Error> {
+    use crate::rirc_schema::users::dsl::*;
+    use crate::rirc_schema::users;
 
     if get_user(connection, w_name).is_err() {
         return Err(NoResultInDatabase);
     }
 
     diesel::update(users::table)
-        .set(dsl::last_ip.eq(w_last_ip))
+        .filter(name.eq(w_name))
+        .set(last_ip.eq(w_last_ip))
         .execute(connection)
         .expect("Error edit user");
 
     diesel::update(users::table)
-        .set(dsl::is_connected.eq(w_is_connected))
+        .set(is_connected.eq(w_is_connected))
+        .execute(connection)
+        .expect("Error editing user");
+
+    diesel::update(users::table)
+        .set(thread_id.eq(w_thread_id))
+        .execute(connection)
+        .expect("Error editing user");
+
+    Ok(())
+}
+
+/// Public function that handles editing an existing user from its thread id,
+///
+/// Example:
+/// ```rust
+/// let connection = &mut establish_connection();
+/// edit_user_from_thread_id(connection, &23, &false);
+/// ```
+pub fn edit_user_from_thread_id(connection: &mut MysqlConnection,
+                                w_thread_id: &i32, w_is_connected: &bool) -> Result<(), Error> {
+    use crate::rirc_schema::users::dsl::*;
+    use crate::rirc_schema::users;
+
+    if get_user_from_thread_id(connection, w_thread_id).is_err() {
+        return Err(NoResultInDatabase);
+    }
+
+    diesel::update(users::table)
+        .filter(thread_id.eq(w_thread_id))
+        .set(is_connected.eq(w_is_connected))
         .execute(connection)
         .expect("Error editing user");
 

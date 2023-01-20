@@ -33,6 +33,7 @@ diesel::table! {
         name -> Char,
         last_ip -> Char,
         is_connected -> Bool,
+        thread_id -> Integer,
     }
 }
 
