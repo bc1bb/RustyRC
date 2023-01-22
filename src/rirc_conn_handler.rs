@@ -68,13 +68,17 @@ fn worker(connection: &mut MysqlConnection, request: Request, addr: String, thre
         PRIVMSG => unimplemented(),
         JOIN => unimplemented(),
         MOTD => unimplemented(),
-        PING => unimplemented(),
+        PING => ping(request.content),
         PONG => unimplemented(),
         QUIT => quit(connection, thread_id),
         USER => user(connection, request.content),
         SKIP => unimplemented(),
         _ => unimplemented(),
     }
+}
+
+fn ping(content: String) -> Result<Response, IrcError> {
+    Ok(Response::new("PONG :".to_string() + content.as_str()))
 }
 
 fn user(connection: &mut MysqlConnection, content: String) -> Result<Response, IrcError> {
