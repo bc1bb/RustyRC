@@ -6,7 +6,7 @@ use std::net::{SocketAddr, TcpListener};
 use std::thread::spawn;
 use dotenvy::dotenv;
 use log::{debug, info, trace, warn};
-use crate::rirc_lib::{create_user, edit_user, edit_user_from_thread_id, establish_connection, get_setting, Server};
+use crate::rirc_lib::*;
 use crate::rirc_conn_handler::handler;
 
 /// Main function, holds threads, database connection
@@ -16,6 +16,7 @@ fn main() {
 
     debug!("Connecting to database...");
     let connection = &mut establish_connection();
+    clean_database(connection);
 
     // This gets settings from database to create a `Server`.
     let server = Server::from_settings(get_setting(connection, "ip").unwrap(), get_setting(connection, "port").unwrap());
@@ -35,8 +36,6 @@ fn main() {
             debug!("New connection from {}", addr);
 
             handler(connection, stream.unwrap(), i32::try_from(thread_id).unwrap());
-
-            edit_user_from_thread_id(connection, &i32::try_from(thread_id).unwrap(), &false).unwrap();
         });
     }
 }

@@ -288,11 +288,13 @@ pub fn edit_user(connection: &mut MysqlConnection, w_name: &str,
         .expect("Error edit user");
 
     diesel::update(users::table)
+        .filter(name.eq(w_name))
         .set(is_connected.eq(w_is_connected))
         .execute(connection)
         .expect("Error editing user");
 
     diesel::update(users::table)
+        .filter(name.eq(w_name))
         .set(thread_id.eq(w_thread_id))
         .execute(connection)
         .expect("Error editing user");
@@ -318,11 +320,34 @@ pub fn edit_user_from_thread_id(connection: &mut MysqlConnection,
 
     diesel::update(users::table)
         .filter(thread_id.eq(w_thread_id))
+        .filter(is_connected.eq(true))
         .set(is_connected.eq(w_is_connected))
         .execute(connection)
         .expect("Error editing user");
 
     Ok(())
+}
+
+/// Public function that cleans database, it will set all users to logged off and set all threads id to -1
+///
+/// Example:
+/// ```rust
+/// let connection = &mut establish_connection();
+/// clean_database(connection);
+/// ```
+pub fn clean_database(connection: &mut MysqlConnection) {
+    use crate::rirc_schema::users::dsl::*;
+    use crate::rirc_schema::users;
+
+    diesel::update(users::table)
+        .set(is_connected.eq(false))
+        .execute(connection)
+        .expect("Error editing user");
+
+    diesel::update(users::table)
+        .set(thread_id.eq(-1))
+        .execute(connection)
+        .expect("Error editing user");
 }
 
 /// Queryable private struct linked to database using Diesel.
