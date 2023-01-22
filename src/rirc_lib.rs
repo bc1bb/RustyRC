@@ -29,7 +29,7 @@ impl Response {
 #[derive(PartialEq, Clone)]
 pub enum Commands {
     // Supported commands
-    CAP, NICK, PRIVMSG, JOIN, MOTD, PING, PONG, QUIT, USER,
+    CAP, NICK, PRIVMSG, JOIN, MOTD, PING, PONG, QUIT, USER, WHOIS, WHOWAS,
 
     // Unsupported commands
     SKIP, // Call sent for unsupported commands
@@ -37,7 +37,7 @@ pub enum Commands {
     ADMIN, AWAY, CNOTE, CONNECT, DIE, ENCAP, ERROR, HELP, INFO, INVITE, ISON, KICK, KILL,
     KNOCK, LINKS, LIST, LUSERS, MODE, NAMES, NOTICE, OPER, PART, PASS, REHASH, RULES, SERVER,
     SERVICE, SERVLIST, SQUERY, SQUIT, SETNAME, SILENCE, STATS, SUMMON, TIME, TOPIC, TRACE,
-    USERHOST, USERIP, USERS, VERSION, WALLOPS, WATCH, WHO, WHOIS, WHOWAS,
+    USERHOST, USERIP, USERS, VERSION, WALLOPS, WATCH, WHO,
 }
 
 impl Commands {
@@ -58,6 +58,8 @@ impl Commands {
             "PONG" => Ok(PONG),
             "QUIT" => Ok(QUIT),
             "USER" => Ok(USER),
+            "WHOIS" => Ok(WHOIS),
+            "WHOWAS" => Ok(WHOWAS),
             _ => Ok(SKIP), //Err(Error::InvalidRequest),
         }
     }

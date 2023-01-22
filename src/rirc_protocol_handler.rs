@@ -39,6 +39,50 @@ fn is_banned(connection: &mut MysqlConnection, addr: String) -> bool {
     }
 }
 
+/// Replying to WHOIS commands
+fn whois(connection: &mut MysqlConnection, content: String, w_thread_id: i32) -> Result<Response, IrcError> {
+    let mut res = Response::new(":localhost ".to_string());
+
+    let sender = get_user_from_thread_id(connection, &w_thread_id).unwrap().name;
+
+    match get_user(connection, content.as_str()) {
+        Ok(user) => {
+            if user.is_connected {
+                // User is currently logged in
+                res.content = res.content + user.name.as_str() + "@" + user.last_ip.as_str()
+            } // User is not currently logged in
+            else { res.content = res.content + "401 " + sender.as_str() + " " + content.as_str() + " :No such nick registered" }
+        }
+        // User has never logged in
+        Err(_) => res.content = res.content + "401 " + sender.as_str() + " " + content.as_str() + " :No such nick registered",
+    }
+
+    res.content = res.content + "\n:localhost 318 " + sender.as_str() + " " + content.as_str() + " :End of /WHOIS";
+
+    Ok(res)
+}
+
+fn whowas(connection: &mut MysqlConnection, content: String, w_thread_id: i32) -> Result<Response, IrcError> {
+    let mut res = Response::new(":localhost ".to_string());
+
+    let sender = get_user_from_thread_id(connection, &w_thread_id).unwrap().name;
+
+    match get_user(connection, content.as_str()) {
+        Ok(user) => {
+            if user.is_connected {
+                // User is currently logged in
+                res.content = res.content + user.name.as_str() + "@" + user.last_ip.as_str()
+            } // User is not currently logged in
+            else { res.content = res.content + user.name.as_str() + "@" + user.last_ip.as_str() }
+        }
+        // User has never logged in
+        Err(_) => res.content = res.content + "406 " + sender.as_str() + " " + content.as_str() + " :No such nick registered",
+    }
+
+    res.content = res.content + "\n:localhost 369 " + sender.as_str() + " " + content.as_str() + " :End of /WHOWAS";
+
+    Ok(res)
+}
 
 /// Returns a PONG to user
 fn ping(content: String) -> Result<Response, IrcError> {
