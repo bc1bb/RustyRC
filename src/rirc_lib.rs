@@ -118,6 +118,7 @@ pub enum IrcError {
     NicknameInUse, // 433: ERR_NICKNAMEINUSE
     YoureBannedCreep, // 465: ERR_YOUREBANNEDCREEP
     YouWillBeBanned, // 466: ERR_YOUWILLBEBANNED
+    NeedMoreParams, // 461: ERR_NEEDMOREPARAMS
 }
 
 impl IrcError {
@@ -137,6 +138,7 @@ impl IrcError {
             NicknameInUse => 433,
             YoureBannedCreep => 465,
             YouWillBeBanned => 466,
+            NeedMoreParams => 461,
         }
     }
 
@@ -156,6 +158,7 @@ impl IrcError {
             NicknameInUse => ":Nickname In Use",
             YoureBannedCreep => ":You're Banned, Creep",
             YouWillBeBanned => ":You Will Be Banned",
+            NeedMoreParams => ":Need More Params",
         }
     }
 }
@@ -341,8 +344,32 @@ pub fn set_connected_from_thread_id(connection: &mut MysqlConnection,
 
     diesel::update(users::table)
         .filter(thread_id.eq(w_thread_id))
-        .filter(is_connected.eq(true))
         .set(is_connected.eq(w_is_connected))
+        .execute(connection)
+        .expect("Error editing user");
+
+    Ok(())
+}
+
+/// Public function that sets `real_name` to `w_real_name` from `nick`,
+///
+/// Example:
+/// ```rust
+/// let connection = &mut establish_connection();
+/// set_real_name(connection, "johndoe", "John Doe");
+/// ```
+pub fn set_real_name(connection: &mut MysqlConnection,
+                                    w_nick: &str, w_real_name: &str) -> Result<(), Error> {
+    use crate::rirc_schema::users::dsl::*;
+    use crate::rirc_schema::users;
+
+    if get_user(connection, w_nick).is_err() {
+        return Err(NoResultInDatabase);
+    }
+
+    diesel::update(users::table)
+        .filter(nick.eq(w_nick))
+        .set(real_name.eq(w_real_name))
         .execute(connection)
         .expect("Error editing user");
 
@@ -560,6 +587,11 @@ pub fn create_setting(connection: &mut MysqlConnection, key: &str, content: &str
         .values(&new_setting)
         .execute(connection)
         .expect("Error saving new setting");
+}
+
+/// Returns only the first word of the given `str`.
+pub fn first_word(content: &str) -> &str {
+    content.split_whitespace().next().unwrap_or(&*content)
 }
 
 /// Public struct used to hold IP and port to listen to,

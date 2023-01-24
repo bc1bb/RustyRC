@@ -40,7 +40,7 @@ CREATE TABLE `users` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `last_login` bigint(11) NOT NULL,
   `nick` char(11) NOT NULL DEFAULT '',
-  `real_name` char(11) NOT NULL DEFAULT '',
+  `real_name` char(25) NOT NULL DEFAULT '',
   `last_ip` char(11) NOT NULL DEFAULT '',
   `is_connected` tinyint(1) NOT NULL,
   `op` tinyint(1) NOT NULL,
