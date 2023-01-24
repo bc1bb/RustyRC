@@ -21,13 +21,11 @@ pub fn worker(connection: &mut MysqlConnection, request: Request, addr: String, 
         PRIVMSG => unimplemented(),
         JOIN => unimplemented(),
         MOTD => unimplemented(),
-        PING => ping(request.content),
-        PONG => unimplemented(),
+        PING => ping(connection, thread_id, request.content),
         QUIT => quit(connection, thread_id),
-        USER => unimplemented(),
-        SKIP => unimplemented(),
         WHOIS => whois(connection, request.content, thread_id),
         WHOWAS => whowas(connection, request.content, thread_id),
+
         _ => unimplemented(),
     }
 }
@@ -41,7 +39,7 @@ fn is_banned(connection: &mut MysqlConnection, addr: String) -> bool {
 
 /// Replying to WHOIS commands
 fn whois(connection: &mut MysqlConnection, content: String, w_thread_id: i32) -> Result<Response, IrcError> {
-    let mut res = Response::new(":localhost ".to_string());
+    let mut res: Response;
 
     let sender = get_user_from_thread_id(connection, &w_thread_id).unwrap().name;
 
@@ -49,21 +47,23 @@ fn whois(connection: &mut MysqlConnection, content: String, w_thread_id: i32) ->
         Ok(user) => {
             if user.is_connected {
                 // User is currently logged in
-                res.content = res.content + user.name.as_str() + "@" + user.last_ip.as_str()
+                res = Response::new(connection, 311, w_thread_id, (user.name + "@" + user.last_ip.as_str()));
             } // User is not currently logged in
-            else { res.content = res.content + "401 " + sender.as_str() + " " + content.as_str() + " :No such nick registered" }
+            else { res = Response::new(connection, 401, w_thread_id, ":No such nick logged in".to_string()) }
         }
         // User has never logged in
-        Err(_) => res.content = res.content + "401 " + sender.as_str() + " " + content.as_str() + " :No such nick registered",
+        Err(_) => res = Response::new(connection, 401, w_thread_id, ":No such nick registered".to_string()),
     }
 
+    // Hack to send two responses at once
     res.content = res.content + "\n:localhost 318 " + sender.as_str() + " " + content.as_str() + " :End of /WHOIS";
 
     Ok(res)
 }
 
+/// Replying to WHOWAS commands
 fn whowas(connection: &mut MysqlConnection, content: String, w_thread_id: i32) -> Result<Response, IrcError> {
-    let mut res = Response::new(":localhost ".to_string());
+    let mut res: Response;
 
     let sender = get_user_from_thread_id(connection, &w_thread_id).unwrap().name;
 
@@ -71,22 +71,25 @@ fn whowas(connection: &mut MysqlConnection, content: String, w_thread_id: i32) -
         Ok(user) => {
             if user.is_connected {
                 // User is currently logged in
-                res.content = res.content + user.name.as_str() + "@" + user.last_ip.as_str()
+                res = Response::new(connection, 311, w_thread_id, (user.name + "@" + user.last_ip.as_str()));
             } // User is not currently logged in
-            else { res.content = res.content + user.name.as_str() + "@" + user.last_ip.as_str() }
+            else { res = Response::new(connection, 314, w_thread_id, (user.name + "@" + user.last_ip.as_str())); }
         }
         // User has never logged in
-        Err(_) => res.content = res.content + "406 " + sender.as_str() + " " + content.as_str() + " :No such nick registered",
+        Err(_) => res = Response::new(connection, 401, w_thread_id, ":No such nick registered".to_string()),
     }
 
+    // Hack to send two responses at once
     res.content = res.content + "\n:localhost 369 " + sender.as_str() + " " + content.as_str() + " :End of /WHOWAS";
 
     Ok(res)
 }
 
 /// Returns a PONG to user
-fn ping(content: String) -> Result<Response, IrcError> {
-    Ok(Response::new("PONG :".to_string() + content.as_str()))
+fn ping(connection: &mut MysqlConnection, w_thread_id: i32, content: String) -> Result<Response, IrcError> {
+    let res = Response::new(connection, 001, w_thread_id, ("PONG".to_string() + content.as_str()));
+
+    Ok(res)
 }
 
 /// User logging in
@@ -102,14 +105,14 @@ fn nick(connection: &mut MysqlConnection, content: String, addr: String, thread_
             } else {
                 // A user with same name has already logged in but logged off since then
                 edit_user(connection, content.as_str(), addr.as_str(), &true, &thread_id).unwrap();
-                let res = Response::new(":localhost 001 ".to_string() + content.as_str() + " :Welcome!");
+                let res = Response::new(connection, 001, thread_id, " :Welcome!".to_string());
                 Ok(res)
             }
         }
         Err(_) => {
             // Username has never logged in
             create_user(connection, content.as_str(), addr.as_str(), &true, &thread_id);
-            let res = Response::new(":localhost 001 ".to_string() + content.as_str() + ":Welcome!");
+            let res = Response::new(connection, 001, thread_id, " :Welcome!".to_string());
             Ok(res)
         }
     }
@@ -120,7 +123,7 @@ fn quit(connection: &mut MysqlConnection, thread_id: i32) -> Result<Response, Ir
     edit_user_from_thread_id(connection, &thread_id, &false).unwrap();
 
     // Send an empty response, we don't care about it
-    Ok(Response::new("BYE BYE".to_string()))
+    Ok(Response::new(connection, 420, thread_id, "BYE BYE".to_string()))
 }
 
 fn unimplemented() -> Result<Response, IrcError> {

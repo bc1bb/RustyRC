@@ -25,6 +25,8 @@ use crate::rirc_protocol_handler::*;
 pub fn handler(connection: &mut MysqlConnection, mut stream: TcpStream, thread_id: i32) {
     let addr = stream.peer_addr().unwrap().ip();
 
+    let ignored_requests = [CAP];
+
     loop {
         let reader = BufReader::new(stream.try_clone().unwrap());
 
@@ -32,20 +34,20 @@ pub fn handler(connection: &mut MysqlConnection, mut stream: TcpStream, thread_i
         // send request to worker()
         for line in reader.lines() {
             let line = line.unwrap();
-            trace!("{} [{}]: {}", addr, thread_id.to_string(), line.clone());
+            trace!("f{} [{}]: {}", addr, thread_id.to_string(), line.clone());
 
             let request = Request::new(line).unwrap();
 
-            // Skip CAP commands
-            if request.clone().command != CAP {
+            // Skip ignored commands
+            if ! ignored_requests.contains(&request.command) {
                 match worker(connection, request, addr.to_string(), thread_id) {
                     Ok(res) => {
+                        sender(stream.try_clone().unwrap(), res.clone(), addr, thread_id);
                         if res.content == "BYE BYE" { return }
-                        else { sender(stream.try_clone().unwrap(), res); }
                     }
                     Err(err) => {
-                        let res = Response::new(err.to_u32().to_string() + " " + err.to_str());
-                        sender(stream.try_clone().unwrap(), res);
+                        let res = Response::new(connection, err.to_u32(), thread_id, err.to_str().to_string());
+                        sender(stream.try_clone().unwrap(), res, addr, thread_id);
                         if err == YoureBannedCreep { return }
                     }
                 }
@@ -54,6 +56,12 @@ pub fn handler(connection: &mut MysqlConnection, mut stream: TcpStream, thread_i
     }
 }
 
-fn sender(mut stream: TcpStream, response: Response) {
-    stream.write((response.content + "\n").as_ref()).unwrap();
+fn sender(mut stream: TcpStream, response: Response, addr: IpAddr, thread_id: i32) {
+    let line = ":".to_string() + response.server_name.as_str() + " " + response.numeric_reply.to_string().as_str() + " " + response.destination.as_str() + " " + response.content.as_str() + "\n";
+
+    trace!("t{} [{}]: {}", addr, thread_id.to_string(), line.clone());
+
+    stream.write(
+            line
+            .as_ref()).unwrap();
 }

@@ -16,12 +16,24 @@ use super::rirc_schema::*;
 /// Holding responses sent by server in a struct
 #[derive(Clone)]
 pub struct Response {
-    pub content: String,
+    pub server_name: String,
+    pub numeric_reply: u32,
+    pub destination: String,
+    pub content: String
 }
 
 impl Response {
-    pub fn new(content: String) -> Response {
-        Response { content }
+    /// Returns a Response from a
+    pub fn new(connection: &mut MysqlConnection, numeric_reply: u32, w_thread_id: i32, content: String) -> Response {
+        let server_name = get_setting(connection, "name").unwrap().content;
+        let destination = get_user_from_thread_id(connection, &w_thread_id).unwrap().name;
+
+        Response {
+            server_name,
+            numeric_reply,
+            destination,
+            content
+        }
     }
 }
 
@@ -225,7 +237,7 @@ pub fn get_user<'a>(connection: &mut MysqlConnection,  w_name: &str) -> Result<U
 /// let connection = &mut establish_connection();
 /// get_user_from_thread_id(connection, &24);
 /// ```
-pub fn get_user_from_thread_id<'a>(connection: &mut MysqlConnection,  w_thread_id: &i32) -> Result<User, Error> {
+pub fn get_user_from_thread_id<'a>(connection: &mut MysqlConnection, w_thread_id: &i32) -> Result<User, Error> {
     use crate::rirc_schema::users::dsl::*;
 
     let mut user = users
