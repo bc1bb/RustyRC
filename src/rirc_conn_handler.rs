@@ -1,12 +1,9 @@
 //! RustyRC Connection Handler
 
 use std::io::{BufRead, BufReader, Write};
-use std::iter::Skip;
-use std::net::{IpAddr, TcpStream};
-use std::thread::sleep;
-use std::time::Duration;
+use std::net::TcpStream;
 use diesel::MysqlConnection;
-use log::{debug, trace};
+use log::trace;
 use crate::rirc_lib::*;
 use crate::rirc_lib::Commands::*;
 use crate::rirc_lib::IrcError::*;

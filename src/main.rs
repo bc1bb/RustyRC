@@ -6,7 +6,7 @@ mod rirc_protocol_handler;
 use std::net::{SocketAddr, TcpListener};
 use std::thread::spawn;
 use dotenvy::dotenv;
-use log::{debug, info, trace, warn};
+use log::{debug, info};
 use crate::rirc_lib::*;
 use crate::rirc_conn_handler::handler;
 

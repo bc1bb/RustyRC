@@ -1,11 +1,6 @@
 //! RustyRC Connection Handler
 
-use std::io::{BufRead, BufReader, Write};
-use std::net::{IpAddr, TcpStream};
-use std::thread::sleep;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use diesel::MysqlConnection;
-use log::{debug, trace};
 use crate::rirc_lib::*;
 use crate::rirc_lib::Commands::*;
 use crate::rirc_lib::IrcError::*;
@@ -63,6 +58,7 @@ fn whois(connection: &mut MysqlConnection, content: String, w_thread_id: i32) ->
     Ok(res)
 }
 
+/// Replying to WHOWAS commands
 fn whowas(connection: &mut MysqlConnection, content: String, w_thread_id: i32) -> Result<Response, IrcError> {
     let mut res = Response::new(":localhost ".to_string());
 

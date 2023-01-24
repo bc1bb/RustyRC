@@ -6,12 +6,12 @@
 
 use std::env;
 use std::net::{IpAddr, Ipv4Addr};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 use diesel::prelude::*;
 use diesel::mysql::MysqlConnection;
 use dotenvy::dotenv;
 use crate::rirc_lib::Error::NoResultInDatabase;
-use super::rirc_schema::*;
+use crate::rirc_schema::*;
 
 
 /// Holding responses sent by server in a struct
@@ -28,6 +28,7 @@ impl Response {
 
 /// Holding commands that can be handled by our server
 #[derive(PartialEq, Clone)]
+#[allow(dead_code)]
 pub enum Commands {
     // Supported commands
     CAP, NICK, PRIVMSG, JOIN, MOTD, PING, PONG, QUIT, USER, WHOIS, WHOWAS,
@@ -107,7 +108,7 @@ pub enum Error {
 ///
 // Errors are sent in a response containing only their number
 // https://www.rfc-editor.org/rfc/rfc1459#section-6
-#[derive(Debug,PartialEq)]
+#[derive(PartialEq)]
 pub enum IrcError {
     None, // (=unimplemented)
     UnknownError, // 400: ERR_UNKNOWNERROR
