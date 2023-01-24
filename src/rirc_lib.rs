@@ -6,6 +6,7 @@
 
 use std::env;
 use std::net::{IpAddr, Ipv4Addr};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use diesel::prelude::*;
 use diesel::mysql::MysqlConnection;
 use dotenvy::dotenv;
@@ -178,9 +179,12 @@ pub fn establish_connection() -> MysqlConnection {
 #[derive(Queryable)]
 pub struct User {
     pub id: i32,
-    pub name: String,
+    pub last_login: i64,
+    pub nick: String,
+    pub real_name: String,
     pub last_ip: String,
     pub is_connected: bool,
+    pub op: bool,
     pub thread_id: i32,
 }
 
@@ -188,25 +192,28 @@ pub struct User {
 #[derive(Insertable)]
 #[diesel(table_name = users)]
 pub struct NewUser<'a> {
-    pub name: &'a str,
+    pub last_login: &'a i64,
+    pub nick: &'a str,
+    pub real_name: &'a str,
     pub last_ip: &'a str,
     pub is_connected: &'a bool,
+    pub op: &'a bool,
     pub thread_id: &'a i32,
 }
 
-/// Public function that will return a `User` when given its `name`,
+/// Public function that will return a `User` when given its `nick`,
 ///
 /// Example:
 /// ```rust
 /// let connection = &mut establish_connection();
 /// get_user(connection, "johndoe");
 /// ```
-pub fn get_user<'a>(connection: &mut MysqlConnection,  w_name: &str) -> Result<User, Error> {
+pub fn get_user<'a>(connection: &mut MysqlConnection,  w_nick: &str) -> Result<User, Error> {
     use crate::rirc_schema::users::dsl::*;
 
     let mut user = users
         .limit(1)
-        .filter(name.eq(w_name))
+        .filter(nick.eq(w_nick))
         .load::<User>(connection)
         .expect("Error loading users")
         .into_iter();
@@ -249,15 +256,20 @@ pub fn get_user_from_thread_id<'a>(connection: &mut MysqlConnection,  w_thread_i
 /// let connection = &mut establish_connection();
 /// create_user(connection, "johndoe", "1.2.3.4", &true);
 /// ```
-pub fn create_user(connection: &mut MysqlConnection, w_name: &str,
-                   w_last_ip: &str, w_is_connected: &bool, w_thread_id: &i32) {
+pub fn create_user(connection: &mut MysqlConnection,
+                   w_last_login: &i64, w_nick: &str, w_real_name: &str,
+                   w_last_ip: &str, w_is_connected: &bool, w_op: &bool,
+                   w_thread_id: &i32) {
     use crate::rirc_schema::users::dsl::*;
     use crate::rirc_schema::users;
 
     let new_user = NewUser {
-        name: w_name,
+        last_login: w_last_login,
+        nick: w_nick,
+        real_name: w_real_name,
         last_ip: w_last_ip,
         is_connected: w_is_connected,
+        op: w_op,
         thread_id: w_thread_id
     };
 
@@ -267,36 +279,43 @@ pub fn create_user(connection: &mut MysqlConnection, w_name: &str,
         .expect("Error saving new user");
 }
 
-/// Public function that handles editing an existing user from its username,
+/// Public function that handles editing certain parts of an existing user from its username,
 ///
 /// Example:
 /// ```rust
 /// let connection = &mut establish_connection();
-/// edit_user(connection, "johndoe", "1.2.3.4", &true, &24);
+/// edit_user(connection, &1674587646,"johndoe", "1.1.1.1", &true, &4);
 /// ```
-pub fn edit_user(connection: &mut MysqlConnection, w_name: &str,
-                   w_last_ip: &str, w_is_connected: &bool, w_thread_id: &i32) -> Result<(), Error> {
+pub fn edit_user(connection: &mut MysqlConnection,
+                 w_last_login: &i64, w_nick: &str, w_last_ip: &str,
+                 w_is_connected: &bool, w_thread_id: &i32) -> Result<(), Error> {
     use crate::rirc_schema::users::dsl::*;
     use crate::rirc_schema::users;
 
-    if get_user(connection, w_name).is_err() {
+    if get_user(connection, w_nick).is_err() {
         return Err(NoResultInDatabase);
     }
 
     diesel::update(users::table)
-        .filter(name.eq(w_name))
-        .set(last_ip.eq(w_last_ip))
+        .filter(nick.eq(w_nick))
+        .set(last_login.eq(w_last_login))
         .execute(connection)
-        .expect("Error edit user");
+        .expect("Error editing user");
 
     diesel::update(users::table)
-        .filter(name.eq(w_name))
+        .filter(nick.eq(w_nick))
+        .set(last_ip.eq(w_last_ip))
+        .execute(connection)
+        .expect("Error editing user");
+
+    diesel::update(users::table)
+        .filter(nick.eq(w_nick))
         .set(is_connected.eq(w_is_connected))
         .execute(connection)
         .expect("Error editing user");
 
     diesel::update(users::table)
-        .filter(name.eq(w_name))
+        .filter(nick.eq(w_nick))
         .set(thread_id.eq(w_thread_id))
         .execute(connection)
         .expect("Error editing user");
@@ -304,15 +323,15 @@ pub fn edit_user(connection: &mut MysqlConnection, w_name: &str,
     Ok(())
 }
 
-/// Public function that handles editing an existing user from its thread id,
+/// Public function that set `is_connected` to `w_is_connected` from `thread_id`,
 ///
 /// Example:
 /// ```rust
 /// let connection = &mut establish_connection();
-/// edit_user_from_thread_id(connection, &23, &false);
+/// set_connected_from_thread_id(connection, &23, &false);
 /// ```
-pub fn edit_user_from_thread_id(connection: &mut MysqlConnection,
-                                w_thread_id: &i32, w_is_connected: &bool) -> Result<(), Error> {
+pub fn set_connected_from_thread_id(connection: &mut MysqlConnection,
+                                    w_thread_id: &i32, w_is_connected: &bool) -> Result<(), Error> {
     use crate::rirc_schema::users::dsl::*;
     use crate::rirc_schema::users;
 
@@ -350,6 +369,13 @@ pub fn clean_database(connection: &mut MysqlConnection) {
         .set(thread_id.eq(-1))
         .execute(connection)
         .expect("Error editing user");
+}
+
+/// Function used when manipulating timestamps (for channels and users),
+///
+/// Returns the current unix timestamp as i64, for easier calls to function asking i64 for timestamps.
+pub fn get_current_epoch() -> i64 {
+    i64::try_from(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs()).unwrap()
 }
 
 /// Queryable private struct linked to database using Diesel.

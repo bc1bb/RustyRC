@@ -30,9 +30,12 @@ diesel::table! {
 diesel::table! {
     users (id) {
         id -> Integer,
-        name -> Char,
+        last_login -> Bigint,
+        nick -> Char,
+        real_name -> Char,
         last_ip -> Char,
         is_connected -> Bool,
+        op -> Bool,
         thread_id -> Integer,
     }
 }

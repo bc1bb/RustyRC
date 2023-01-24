@@ -3,7 +3,7 @@
 use std::io::{BufRead, BufReader, Write};
 use std::net::{IpAddr, TcpStream};
 use std::thread::sleep;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use diesel::MysqlConnection;
 use log::{debug, trace};
 use crate::rirc_lib::*;
@@ -43,13 +43,13 @@ fn is_banned(connection: &mut MysqlConnection, addr: String) -> bool {
 fn whois(connection: &mut MysqlConnection, content: String, w_thread_id: i32) -> Result<Response, IrcError> {
     let mut res = Response::new(":localhost ".to_string());
 
-    let sender = get_user_from_thread_id(connection, &w_thread_id).unwrap().name;
+    let sender = get_user_from_thread_id(connection, &w_thread_id).unwrap().nick;
 
     match get_user(connection, content.as_str()) {
         Ok(user) => {
             if user.is_connected {
                 // User is currently logged in
-                res.content = res.content + user.name.as_str() + "@" + user.last_ip.as_str()
+                res.content = res.content + user.nick.as_str() + "@" + user.last_ip.as_str()
             } // User is not currently logged in
             else { res.content = res.content + "401 " + sender.as_str() + " " + content.as_str() + " :No such nick registered" }
         }
@@ -65,15 +65,15 @@ fn whois(connection: &mut MysqlConnection, content: String, w_thread_id: i32) ->
 fn whowas(connection: &mut MysqlConnection, content: String, w_thread_id: i32) -> Result<Response, IrcError> {
     let mut res = Response::new(":localhost ".to_string());
 
-    let sender = get_user_from_thread_id(connection, &w_thread_id).unwrap().name;
+    let sender = get_user_from_thread_id(connection, &w_thread_id).unwrap().nick;
 
     match get_user(connection, content.as_str()) {
         Ok(user) => {
             if user.is_connected {
                 // User is currently logged in
-                res.content = res.content + user.name.as_str() + "@" + user.last_ip.as_str()
+                res.content = res.content + user.nick.as_str() + "@" + user.last_ip.as_str()
             } // User is not currently logged in
-            else { res.content = res.content + user.name.as_str() + "@" + user.last_ip.as_str() }
+            else { res.content = res.content + user.nick.as_str() + "@" + user.last_ip.as_str() }
         }
         // User has never logged in
         Err(_) => res.content = res.content + "406 " + sender.as_str() + " " + content.as_str() + " :No such nick registered",
@@ -84,7 +84,7 @@ fn whowas(connection: &mut MysqlConnection, content: String, w_thread_id: i32) -
     Ok(res)
 }
 
-/// Returns a PONG to user
+/// Returns a PONG to client
 fn ping(content: String) -> Result<Response, IrcError> {
     Ok(Response::new("PONG :".to_string() + content.as_str()))
 }
@@ -95,20 +95,20 @@ fn nick(connection: &mut MysqlConnection, content: String, addr: String, thread_
 
 
     return match db_user {
-        Ok(_) => {
-            if db_user.unwrap().is_connected {
+        Ok(db_user) => {
+            if db_user.is_connected {
                 // A user with same name is already logged in
                 Err(NicknameInUse)
             } else {
                 // A user with same name has already logged in but logged off since then
-                edit_user(connection, content.as_str(), addr.as_str(), &true, &thread_id).unwrap();
+                edit_user(connection, &get_current_epoch(), content.as_str(), addr.as_str(), &true, &thread_id).unwrap();
                 let res = Response::new(":localhost 001 ".to_string() + content.as_str() + " :Welcome!");
                 Ok(res)
             }
         }
         Err(_) => {
             // Username has never logged in
-            create_user(connection, content.as_str(), addr.as_str(), &true, &thread_id);
+            create_user(connection, &get_current_epoch(), content.as_str(), content.as_str(), addr.as_str(), &true, &false, &thread_id);
             let res = Response::new(":localhost 001 ".to_string() + content.as_str() + ":Welcome!");
             Ok(res)
         }
@@ -117,7 +117,7 @@ fn nick(connection: &mut MysqlConnection, content: String, addr: String, thread_
 
 /// User quitting server
 fn quit(connection: &mut MysqlConnection, thread_id: i32) -> Result<Response, IrcError> {
-    edit_user_from_thread_id(connection, &thread_id, &false).unwrap();
+    set_connected_from_thread_id(connection, &thread_id, &false).unwrap();
 
     // Send an empty response, we don't care about it
     Ok(Response::new("BYE BYE".to_string()))
