@@ -66,11 +66,8 @@ fn whowas(connection: &mut MysqlConnection, content: String, w_thread_id: i32) -
 
     match get_user(connection, content.as_str()) {
         Ok(user) => {
-            if user.is_connected {
-                // User is currently logged in
-                res.content = res.content + user.nick.as_str() + "@" + user.last_ip.as_str()
-            } // User is not currently logged in
-            else { res.content = res.content + user.nick.as_str() + "@" + user.last_ip.as_str() }
+            // if user has ever existed
+            res.content = res.content + "314 " + user.nick.as_str() + " " + user.nick.as_str() + " " + user.last_ip.as_str() + " " + user.real_name.as_str()
         }
         // User has never logged in
         Err(_) => res.content = res.content + "406 " + sender.as_str() + " " + content.as_str() + " :No such nick registered",
