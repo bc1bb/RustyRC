@@ -89,6 +89,11 @@ fn nick(connection: &mut MysqlConnection, content: String, addr: String, thread_
 
     let db_user = get_user(connection, nick);
 
+    // if user already has a nickname
+    if get_user_from_thread_id(connection, &thread_id).is_ok() {
+        set_connected_from_thread_id(connection, &thread_id, &false);
+    }
+
     return match db_user {
         Ok(db_user) => {
             if db_user.is_connected {
