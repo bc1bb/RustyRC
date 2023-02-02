@@ -1,6 +1,7 @@
 //! RustyRC Connection Handler
 
 use diesel::MysqlConnection;
+use log::trace;
 use crate::rirc_lib::*;
 use crate::rirc_lib::Commands::*;
 use crate::rirc_lib::IrcError::*;
@@ -13,7 +14,7 @@ pub fn worker(connection: &mut MysqlConnection, request: Request, addr: String, 
 
     return match request.command {
         NICK => nick(connection, request.content, addr, thread_id),
-        PRIVMSG => unimplemented(),
+        PRIVMSG => privmsg(connection, thread_id, request.content),
         JOIN => unimplemented(),
         MOTD => unimplemented(),
         PING => ping(request.content),
@@ -25,6 +26,34 @@ pub fn worker(connection: &mut MysqlConnection, request: Request, addr: String, 
         WHOWAS => whowas(connection, request.content, thread_id),
         _ => unimplemented(),
     }
+}
+
+/// Handling user sending message to channel
+fn privmsg(connection: &mut MysqlConnection, thread_id: i32, content: String) -> Result<Response,IrcError> {
+    // Expecting request in this form (RFC 1459):
+    // PRIVMSG <receiver>{,<receiver>} <text to be sent>
+    let mut content_vec: Vec<&str> = content.split_whitespace().collect();
+
+    let receiver = content_vec[0];
+    let sender = get_user_from_thread_id(connection, &thread_id).unwrap().nick;
+
+    // We won't handle sending to multiple recipients
+    if receiver.contains(",") {
+        return Err(TooManyTargets)
+    }
+
+    let mut message = "".to_string();
+
+    for word in &mut content_vec[1..] {
+        for char in word.chars() {
+            message = message + char.to_string().as_str();
+        }
+        message = message + " ";
+    }
+
+    add_message(connection, receiver, &*sender, &*message)?;
+
+    Ok(Response::new("".to_string()))
 }
 
 /// Checking if user is banned, returns a `bool`.
@@ -91,7 +120,7 @@ fn nick(connection: &mut MysqlConnection, content: String, addr: String, thread_
 
     // if user already has a nickname
     if get_user_from_thread_id(connection, &thread_id).is_ok() {
-        set_connected_from_thread_id(connection, &thread_id, &false);
+        set_connected_from_thread_id(connection, &thread_id, &false).unwrap();
     }
 
     return match db_user {
@@ -109,7 +138,7 @@ fn nick(connection: &mut MysqlConnection, content: String, addr: String, thread_
         Err(_) => {
             // Username has never logged in
             create_user(connection, &get_current_epoch(), nick, nick, addr.as_str(), &true, &false, &thread_id);
-            let res = Response::new(":localhost 001 ".to_string() + nick + ":Welcome!");
+            let res = Response::new(":localhost 001 ".to_string() + nick + " :Welcome!");
             Ok(res)
         }
     }
@@ -131,12 +160,14 @@ fn user(connection: &mut MysqlConnection, content: String) -> Result<Response, I
     }
 
     // if <realname> starts with ":" (declaring a multi word string)
-    let mut real_name: String;
+    let mut real_name = "".to_string();
     if content_vec[3].starts_with(":") {
         // collect all parts into real_name
-        real_name = content_vec[3].to_string();
-        for parts in &mut content_vec[4..] {
-            real_name = real_name + " " + parts;
+        for word in &mut content_vec[3..] {
+            for char in word.chars() {
+                real_name = real_name + char.to_string().as_str();
+            }
+            real_name = real_name + " ";
         }
     } else {
         real_name = content_vec[3].to_string();

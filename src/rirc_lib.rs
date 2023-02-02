@@ -10,7 +10,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use diesel::prelude::*;
 use diesel::mysql::MysqlConnection;
 use dotenvy::dotenv;
-use crate::rirc_lib::Error::NoResultInDatabase;
+use crate::rirc_lib::Error::*;
+use crate::rirc_lib::IrcError::*;
 use crate::rirc_schema::*;
 
 
@@ -108,7 +109,7 @@ pub enum Error {
 ///
 // Errors are sent in a response containing only their number
 // https://www.rfc-editor.org/rfc/rfc1459#section-6
-#[derive(PartialEq)]
+#[derive(Debug,PartialEq)]
 pub enum IrcError {
     None, // (=unimplemented)
     UnknownError, // 400: ERR_UNKNOWNERROR
@@ -116,10 +117,11 @@ pub enum IrcError {
     NoSuchServer, // 402: ERR_NOSUCHSERVER
     NoSuchChannel, // 403: ERR_NOSUCHCHANNEL
     CannotSendToChan, // 404: ERR_CANNOTSENDTOCHAN
+    TooManyTargets, // 407: ERR_TOOMANYTARGETS
     NicknameInUse, // 433: ERR_NICKNAMEINUSE
+    NeedMoreParams, // 461: ERR_NEEDMOREPARAMS
     YoureBannedCreep, // 465: ERR_YOUREBANNEDCREEP
     YouWillBeBanned, // 466: ERR_YOUWILLBEBANNED
-    NeedMoreParams, // 461: ERR_NEEDMOREPARAMS
 }
 
 impl IrcError {
@@ -136,10 +138,11 @@ impl IrcError {
             NoSuchServer => 402,
             NoSuchChannel => 403,
             CannotSendToChan => 404,
+            TooManyTargets => 407,
             NicknameInUse => 433,
+            NeedMoreParams => 461,
             YoureBannedCreep => 465,
             YouWillBeBanned => 466,
-            NeedMoreParams => 461,
         }
     }
 
@@ -150,16 +153,17 @@ impl IrcError {
         use self::IrcError::*;
 
         match self {
-            None => "",
-            UnknownError => ":Unknown Error",
-            NoSuchNick => ":No Such Nick",
-            NoSuchServer => ":No Such Server",
-            NoSuchChannel => ":No Such Channel",
-            CannotSendToChan => ":Cannot Send To Chan",
-            NicknameInUse => ":Nickname In Use",
-            YoureBannedCreep => ":You're Banned, Creep",
-            YouWillBeBanned => ":You Will Be Banned",
-            NeedMoreParams => ":Need More Params",
+            None => "", // 0
+            UnknownError => ":Unknown Error", // 400
+            NoSuchNick => ":No Such Nick", // 401
+            NoSuchServer => ":No Such Server", // 402
+            NoSuchChannel => ":No Such Channel", // 403
+            CannotSendToChan => ":Cannot Send To Chan", // 404
+            TooManyTargets => ":Too Many Targets", //407
+            NicknameInUse => ":Nickname In Use", // 433
+            NeedMoreParams => ":Need More Params", // 461
+            YoureBannedCreep => ":You're Banned, Creep", // 465
+            YouWillBeBanned => ":You Will Be Banned", //466
         }
     }
 }
@@ -349,6 +353,15 @@ pub fn set_connected_from_thread_id(connection: &mut MysqlConnection,
         .execute(connection)
         .expect("Error editing user");
 
+    // if we want to declare our user as logged off
+    if ! w_is_connected {
+        diesel::update(users::table)
+            .filter(thread_id.eq(w_thread_id))
+            .set(thread_id.eq(-1))
+            .execute(connection)
+            .expect("Error editing user");
+    }
+
     Ok(())
 }
 
@@ -360,7 +373,7 @@ pub fn set_connected_from_thread_id(connection: &mut MysqlConnection,
 /// set_real_name(connection, "johndoe", "John Doe");
 /// ```
 pub fn set_real_name(connection: &mut MysqlConnection,
-                                    w_nick: &str, w_real_name: &str) -> Result<(), Error> {
+                     w_nick: &str, w_real_name: &str) -> Result<(), Error> {
     use crate::rirc_schema::users::dsl::*;
     use crate::rirc_schema::users;
 
@@ -530,6 +543,27 @@ pub fn create_channel(connection: &mut MysqlConnection, name: &str, creation_tim
         .values(&new_channel)
         .execute(connection)
         .expect("Error saving new channel");
+}
+
+/// Function used to add message when user sends PRIVMSG command
+pub fn add_message(connection: &mut MysqlConnection, channel: &str, nick: &str, w_content: &str) -> Result<(), IrcError> {
+    use crate::rirc_schema::channels::dsl::*;
+    use crate::rirc_schema::channels;
+
+    // Channel doesnt exist
+    if get_channel(connection, channel).is_err() {
+        return Err(NoSuchChannel);
+    }
+
+    let line = (nick.to_string() + " " + w_content);
+
+    diesel::update(channels::table)
+        .filter(name.eq(channel))
+        .set(content.eq(line))
+        .execute(connection)
+        .expect("Error editing channel");
+
+    Ok(())
 }
 
 /// Queryable public struct linked to database using Diesel.
