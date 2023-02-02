@@ -8,7 +8,7 @@ use crate::rirc_lib::IrcError::*;
 
 /// Public function handling protocol and sending each requests to the right function depending on the command
 pub fn worker(connection: &mut MysqlConnection, request: Request, addr: String, thread_id: i32) -> Result<Response, IrcError> {
-    if is_banned(connection, addr.clone()) {
+    if is_banned(connection, addr.as_str()) {
         return Err(YoureBannedCreep);
     }
 
@@ -57,11 +57,34 @@ fn privmsg(connection: &mut MysqlConnection, thread_id: i32, content: String) ->
 }
 
 /// Checking if user is banned, returns a `bool`.
-fn is_banned(connection: &mut MysqlConnection, addr: String) -> bool {
-    return match get_ban(connection, &true, addr.as_str()) {
+fn is_banned(connection: &mut MysqlConnection, addr: &str) -> bool {
+    return match get_ban(connection, &true, addr) {
         Ok(_) => true,
         Err(_) => false
     }
+}
+
+/// Checking if a nickname is valid,
+/// - Less than 11 chars,
+/// - Not banned,
+/// - Does not contain special characters.
+fn check_nick(connection: &mut MysqlConnection, nick: &str) -> Result<(), IrcError> {
+    // Is username banned ?
+    if get_ban(connection, &false, nick).is_ok() {
+        return Err(YoureBannedCreep);
+    }
+
+    // Is username longer than 11 characters ?
+    if nick.len() > 11 {
+        return Err(ErroneusNickname);
+    }
+
+    // Is username made of alphanumeric characters ?
+    if ! nick.chars().all(char::is_alphanumeric) {
+        return Err(ErroneusNickname);
+    }
+
+    return Ok(());
 }
 
 /// Replying to WHOIS commands
@@ -115,6 +138,8 @@ fn ping(content: String) -> Result<Response, IrcError> {
 /// User logging in
 fn nick(connection: &mut MysqlConnection, content: String, addr: String, thread_id: i32) -> Result<Response, IrcError> {
     let nick = first_word(content.as_str());
+
+    check_nick(connection, nick)?;
 
     let db_user = get_user(connection, nick);
 

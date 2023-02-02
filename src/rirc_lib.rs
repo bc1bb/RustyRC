@@ -118,6 +118,7 @@ pub enum IrcError {
     NoSuchChannel, // 403: ERR_NOSUCHCHANNEL
     CannotSendToChan, // 404: ERR_CANNOTSENDTOCHAN
     TooManyTargets, // 407: ERR_TOOMANYTARGETS
+    ErroneusNickname, // 432: ERR_ERRONEUSNICKNAME
     NicknameInUse, // 433: ERR_NICKNAMEINUSE
     NeedMoreParams, // 461: ERR_NEEDMOREPARAMS
     YoureBannedCreep, // 465: ERR_YOUREBANNEDCREEP
@@ -139,6 +140,7 @@ impl IrcError {
             NoSuchChannel => 403,
             CannotSendToChan => 404,
             TooManyTargets => 407,
+            ErroneusNickname => 432,
             NicknameInUse => 433,
             NeedMoreParams => 461,
             YoureBannedCreep => 465,
@@ -159,7 +161,8 @@ impl IrcError {
             NoSuchServer => ":No Such Server", // 402
             NoSuchChannel => ":No Such Channel", // 403
             CannotSendToChan => ":Cannot Send To Chan", // 404
-            TooManyTargets => ":Too Many Targets", //407
+            TooManyTargets => ":Too Many Targets", // 407
+            ErroneusNickname => ":Erroneus Nickname", // 432
             NicknameInUse => ":Nickname In Use", // 433
             NeedMoreParams => ":Need More Params", // 461
             YoureBannedCreep => ":You're Banned, Creep", // 465
