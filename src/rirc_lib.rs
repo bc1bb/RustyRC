@@ -114,9 +114,9 @@ pub enum IrcError {
     None, // (=unimplemented)
     UnknownError, // 400: ERR_UNKNOWNERROR
     NoSuchNick, // 401: ERR_NOSUCHNICK
-    NoSuchServer, // 402: ERR_NOSUCHSERVER
     NoSuchChannel, // 403: ERR_NOSUCHCHANNEL
     CannotSendToChan, // 404: ERR_CANNOTSENDTOCHAN
+    TooManyChannels, // 405: ERR_TOOMANYCHANNELS
     TooManyTargets, // 407: ERR_TOOMANYTARGETS
     ErroneusNickname, // 432: ERR_ERRONEUSNICKNAME
     NicknameInUse, // 433: ERR_NICKNAMEINUSE
@@ -136,9 +136,9 @@ impl IrcError {
             None => 0,
             UnknownError => 400,
             NoSuchNick => 401,
-            NoSuchServer => 402,
             NoSuchChannel => 403,
             CannotSendToChan => 404,
+            TooManyChannels => 405,
             TooManyTargets => 407,
             ErroneusNickname => 432,
             NicknameInUse => 433,
@@ -158,9 +158,9 @@ impl IrcError {
             None => "", // 0
             UnknownError => ":Unknown Error", // 400
             NoSuchNick => ":No Such Nick", // 401
-            NoSuchServer => ":No Such Server", // 402
             NoSuchChannel => ":No Such Channel", // 403
             CannotSendToChan => ":Cannot Send To Chan", // 404
+            TooManyChannels => ":Too Many Channels", // 405
             TooManyTargets => ":Too Many Targets", // 407
             ErroneusNickname => ":Erroneus Nickname", // 432
             NicknameInUse => ":Nickname In Use", // 433
@@ -249,6 +249,30 @@ pub fn get_user_from_thread_id<'a>(connection: &mut MysqlConnection,  w_thread_i
     let mut user = users
         .limit(1)
         .filter(thread_id.eq(w_thread_id))
+        .load::<User>(connection)
+        .expect("Error loading users")
+        .into_iter();
+
+    if user.len() > 0 {
+        Ok(user.nth(0).unwrap())
+    } else {
+        Err(NoResultInDatabase)
+    }
+}
+
+/// Public function that will return a `User` when given its `id`,
+///
+/// Example:
+/// ```rust
+/// let connection = &mut establish_connection();
+/// get_user_from_thread_id(connection, &24);
+/// ```
+pub fn get_user_from_id<'a>(connection: &mut MysqlConnection,  w_id: &i32) -> Result<User, Error> {
+    use crate::rirc_schema::users::dsl::*;
+
+    let mut user = users
+        .limit(1)
+        .filter(id.eq(w_id))
         .load::<User>(connection)
         .expect("Error loading users")
         .into_iter();
@@ -404,6 +428,9 @@ pub fn clean_database(connection: &mut MysqlConnection) {
     use crate::rirc_schema::users::dsl::*;
     use crate::rirc_schema::users;
 
+    use crate::rirc_schema::memberships::dsl::*;
+    use crate::rirc_schema::memberships;
+
     diesel::update(users::table)
         .set(is_connected.eq(false))
         .execute(connection)
@@ -413,6 +440,10 @@ pub fn clean_database(connection: &mut MysqlConnection) {
         .set(thread_id.eq(-1))
         .execute(connection)
         .expect("Error editing user");
+
+    diesel::delete(memberships::table)
+        .execute(connection)
+        .expect("Error removing memberships");
 }
 
 /// Function used when manipulating timestamps (for channels and users),
@@ -443,8 +474,8 @@ struct NewBan<'a> {
 /// Example:
 /// ```rust
 /// let connection = &mut establish_connection();
-/// get_channel(connection, &true, "1.1.1.1");
-/// get_channel(connection, &false, "johndoe");
+/// get_ban(connection, &true, "1.1.1.1");
+/// get_ban(connection, &false, "johndoe");
 /// ```
 pub fn get_ban<'a>(connection: &mut MysqlConnection, w_is_ip: &bool, w_name: &str) -> Result<Ban,Error> {
     use crate::rirc_schema::bans::dsl::*;
@@ -519,6 +550,30 @@ pub fn get_channel<'a>(connection: &mut MysqlConnection, w_name: &str) -> Result
     let mut channel = channels
         .limit(1)
         .filter(name.eq(w_name))
+        .load::<Channel>(connection)
+        .expect("Error loading channels")
+        .into_iter();
+
+    if channel.len() == 1 {
+        Ok(channel.nth(0).unwrap())
+    } else {
+        Err(NoResultInDatabase)
+    }
+}
+
+/// Public function that will return a `Channel` when given it's `id`
+///
+/// Example:
+/// ```rust
+/// let connection = &mut establish_connection();
+/// get_channel_from_id(connection, &2);
+/// ```
+pub fn get_channel_from_id<'a>(connection: &mut MysqlConnection, w_id: &i32) -> Result<Channel, Error> {
+    use crate::rirc_schema::channels::dsl::*;
+
+    let mut channel = channels
+        .limit(1)
+        .filter(id.eq(w_id))
         .load::<Channel>(connection)
         .expect("Error loading channels")
         .into_iter();
@@ -609,22 +664,59 @@ pub fn get_setting<'a>(connection: &mut MysqlConnection, w_key: &str) -> Result<
     }
 }
 
-/// Public function that handles creating settings,
+/// Queryable public struct linked to database using Diesel.
+#[derive(Queryable)]
+pub struct Membership {
+    pub id: i32,
+    pub id_user: i32,
+    pub id_channel: i32,
+}
+
+
+/// Insertable private struct linked to database using Diesel.
+#[derive(Insertable)]
+#[diesel(table_name = memberships)]
+pub struct NewMembership<'a> {
+    pub id_user: &'a i32,
+    pub id_channel: &'a i32,
+}
+
+/// Public function used to return the latest channel membership created,
 ///
 /// Example:
 /// ```rust
 /// let connection = &mut establish_connection();
-/// create_setting(connection, "name", "MyCoolServ");
+/// get_last_membership(connection);
 /// ```
-pub fn create_setting(connection: &mut MysqlConnection, key: &str, content: &str) {
-    use crate::rirc_schema::settings;
+pub fn get_last_membership<'a>(connection: &mut MysqlConnection) -> Result<Membership, Error> {
+    use crate::rirc_schema::memberships::dsl::*;
 
-    let new_setting = NewSetting { key, content };
+    let mut membership = memberships
+        .limit(1)
+        .order(id.desc())
+        .load::<Membership>(connection)
+        .expect("Error loading memberships")
+        .into_iter();
 
-    diesel::insert_into(settings::table)
-        .values(&new_setting)
+    if membership.len() > 0 {
+        Ok(membership.nth(0).unwrap())
+    } else {
+        Err(NoResultInDatabase)
+    }
+}
+
+pub fn create_membership(connection: &mut MysqlConnection, nick: &str, channel: &str) {
+    use crate::rirc_schema::memberships;
+
+    let id_user = &get_user(connection, nick).unwrap().id;
+    let id_channel = &get_channel(connection, channel).unwrap().id;
+
+    let new_membership = NewMembership { id_user, id_channel };
+
+    diesel::insert_into(memberships::table)
+        .values(&new_membership)
         .execute(connection)
-        .expect("Error saving new setting");
+        .expect("Error saving new membership");
 }
 
 /// Returns only the first word of the given `str`.

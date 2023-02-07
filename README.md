@@ -13,10 +13,10 @@
 - Create tables using:
 ```sql
 CREATE TABLE `bans` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `is_ip` tinyint(1) NOT NULL,
-  `content` char(20) NOT NULL,
-  PRIMARY KEY (`id`)
+                               `id` int(11) NOT NULL AUTO_INCREMENT,
+                               `is_ip` tinyint(1) NOT NULL,
+                               `content` char(20) NOT NULL,
+                               PRIMARY KEY (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `channels` (
@@ -37,15 +37,27 @@ CREATE TABLE `settings` (
 ) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `users` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `last_login` bigint(11) NOT NULL,
-  `nick` char(11) NOT NULL DEFAULT '',
-  `real_name` char(25) NOT NULL DEFAULT '',
-  `last_ip` char(11) NOT NULL DEFAULT '',
-  `is_connected` tinyint(1) NOT NULL,
-  `op` tinyint(1) NOT NULL,
-  `thread_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`id`)
+                               `id` int(11) NOT NULL AUTO_INCREMENT,
+                               `last_login` bigint(11) NOT NULL,
+                               `nick` char(11) NOT NULL DEFAULT '',
+                               `real_name` char(25) NOT NULL DEFAULT '',
+                               `last_ip` char(11) NOT NULL DEFAULT '',
+                               `is_connected` tinyint(1) NOT NULL,
+                               `op` tinyint(1) NOT NULL,
+                               `thread_id` int(11) NOT NULL DEFAULT 0,
+                               PRIMARY KEY (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=30 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `memberships` (
+                               `id` int(11) NOT NULL AUTO_INCREMENT,
+                               `id_user` int(11) NOT NULL,
+                               `id_channel` int(11) NOT NULL,
+                               `thread_id` int(11) NOT NULL,
+                               PRIMARY KEY (`id`),
+                               KEY `user` (`id_user`),
+                               KEY `channel` (`id_channel`),
+                               CONSTRAINT `channel` FOREIGN KEY (`id_channel`) REFERENCES `channels` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+                               CONSTRAINT `user` FOREIGN KEY (`id_user`) REFERENCES `users` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 ```
 - Run!

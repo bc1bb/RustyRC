@@ -1,13 +1,16 @@
 //! RustyRC Connection Handler
 
+use std::net::TcpStream;
 use diesel::MysqlConnection;
 use log::trace;
 use crate::rirc_lib::*;
 use crate::rirc_lib::Commands::*;
 use crate::rirc_lib::IrcError::*;
+use crate::rirc_message_handler::wait_for_message;
+use std::thread::spawn;
 
 /// Public function handling protocol and sending each requests to the right function depending on the command
-pub fn worker(connection: &mut MysqlConnection, request: Request, addr: String, thread_id: i32) -> Result<Response, IrcError> {
+pub fn worker(connection: &mut MysqlConnection, request: Request, addr: String, thread_id: i32, stream: TcpStream) -> Result<Response, IrcError> {
     if is_banned(connection, addr.as_str()) {
         return Err(YoureBannedCreep);
     }
@@ -15,7 +18,7 @@ pub fn worker(connection: &mut MysqlConnection, request: Request, addr: String, 
     return match request.command {
         NICK => nick(connection, request.content, addr, thread_id),
         PRIVMSG => privmsg(connection, thread_id, request.content),
-        JOIN => unimplemented(),
+        JOIN => join(connection, thread_id, request.clone().content, stream),
         MOTD => unimplemented(),
         PING => ping(request.content),
         PONG => unimplemented(),
@@ -26,6 +29,47 @@ pub fn worker(connection: &mut MysqlConnection, request: Request, addr: String, 
         WHOWAS => whowas(connection, request.content, thread_id),
         _ => unimplemented(),
     }
+}
+
+/// Handling users joining channels
+fn join(connection: &mut MysqlConnection, thread_id: i32, content: String, stream: TcpStream) -> Result<Response,IrcError> {
+    // Expecting message such as
+    // JOIN <channel>{,<channel>} [<key>{,<key>}]
+
+    let wtf = &content.clone();
+
+    let channel = first_word(wtf.as_str());
+
+    if channel.contains(",") {
+        return Err(TooManyChannels)
+    }
+
+    if get_channel(connection, channel).is_err() {
+        return Err(NoSuchChannel)
+    }
+
+    // Preparing to send a message such as ":WiZ JOIN #Twilight_zone" in the channel
+    let nick = get_user_from_thread_id(connection, &thread_id).unwrap().nick;
+    let line = ":".to_string() + nick.clone().as_str() + " JOIN #" + channel;
+
+    // Sending
+    add_message(connection, channel, nick.as_str(), line.as_str()).unwrap();
+
+    // Add membership to the table, so child thread knows what to do
+    create_membership(connection, nick.as_str(), channel);
+
+    spawn(move || {
+        let connection = &mut establish_connection();
+
+        // Thread will finally start waiting for messages
+        wait_for_message(connection, stream);
+    });
+
+    // Preparing to return channel's MOTD to user
+    let motd = get_channel(connection, channel).unwrap().motd;
+    let line = "332 :".to_string() + motd.as_str();
+
+    Ok(Response::new(line))
 }
 
 /// Handling user sending message to channel

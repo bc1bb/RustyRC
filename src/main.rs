@@ -2,6 +2,7 @@ mod rirc_conn_handler;
 mod rirc_schema;
 mod rirc_lib;
 mod rirc_protocol_handler;
+mod rirc_message_handler;
 
 use std::net::{SocketAddr, TcpListener};
 use std::thread::spawn;

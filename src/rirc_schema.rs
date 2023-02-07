@@ -20,6 +20,14 @@ diesel::table! {
 }
 
 diesel::table! {
+    memberships (id) {
+        id -> Integer,
+        id_user -> Integer,
+        id_channel -> Integer,
+    }
+}
+
+diesel::table! {
     settings (id) {
         id -> Integer,
         key -> Char,
@@ -40,9 +48,13 @@ diesel::table! {
     }
 }
 
+diesel::joinable!(memberships -> channels (id_channel));
+diesel::joinable!(memberships -> users (id_user));
+
 diesel::allow_tables_to_appear_in_same_query!(
     bans,
     channels,
+    memberships,
     settings,
     users,
 );
