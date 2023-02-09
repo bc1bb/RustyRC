@@ -32,20 +32,19 @@ pub fn handler(connection: &mut MysqlConnection, mut stream: TcpStream, thread_i
             trace!("{}: {}", addr, line.clone());
 
             let request = Request::new(line).unwrap();
+            let mut res = Response::new("".to_string());
 
-            // Skip CAP commands
-            if request.clone().command != CAP {
-                match worker(connection, request, addr.to_string(), thread_id, stream.try_clone().unwrap()) {
-                    Ok(res) => {
-                        // if request is QUIT
-                        if res.content == "BYE BYE" { return }
-                        else { sender(stream.try_clone().unwrap(), res); }
-                    }
-                    Err(err) => {
-                        let res = Response::new(err.to_u32().to_string() + " " + err.to_str());
-                        sender(stream.try_clone().unwrap(), res);
-                        if err == YoureBannedCreep { return }
-                    }
+            match worker(connection, request, addr.to_string(), thread_id, stream.try_clone().unwrap()) {
+                Ok(res) => {
+                    // if request is QUIT
+                    if res.content == "BYE BYE" { return }
+
+                    sender(stream.try_clone().unwrap(), res);
+                }
+                Err(err) => {
+                    let res = Response::new(err.to_u32().to_string() + " " + err.to_str());
+                    if err == YoureBannedCreep { return }
+                    sender(stream.try_clone().unwrap(), res);
                 }
             }
         }
@@ -57,6 +56,10 @@ pub fn handler(connection: &mut MysqlConnection, mut stream: TcpStream, thread_i
 /// It is making sure that we send our responses with a \n at the end.
 pub fn sender(mut stream: TcpStream, response: Response) {
     let line = response.content;
+
+    if line == "0" || line == "" {
+        return
+    }
 
     trace!("{}: {}", stream.peer_addr().unwrap(), line);
     stream.write((line + "\n").as_ref()).unwrap();
