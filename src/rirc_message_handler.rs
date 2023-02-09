@@ -14,12 +14,22 @@ pub fn wait_for_message(connection: &mut MysqlConnection, mut stream: TcpStream)
     // store channel's last message
     let mut message = channel.content;
 
+    // store who this owns this thread
+    let owner = user.nick.as_str();
+
     loop {
         // get channel's last message
         let new_message = get_channel_from_id(connection, &membership.id_channel).unwrap().content;
 
         // if message is not new, ignore
         if new_message == message {
+            message = new_message;
+
+            continue
+        }
+
+        // if message is sent by thread owner, ignore
+        if message.starts_with(owner) || message.starts_with(&(":".to_string() + owner)) {
             message = new_message;
 
             continue

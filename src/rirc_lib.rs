@@ -7,6 +7,7 @@
 use std::env;
 use std::net::{IpAddr, Ipv4Addr};
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::vec::IntoIter;
 use diesel::prelude::*;
 use diesel::mysql::MysqlConnection;
 use dotenvy::dotenv;
@@ -624,20 +625,28 @@ pub fn add_message(connection: &mut MysqlConnection, channel: &str, nick: &str, 
     Ok(())
 }
 
+/// Function used to send in every channel a user is in
+pub fn broadcast_as_user(connection: &mut MysqlConnection, nick: &str, w_content: String) -> Result<(), IrcError> {
+    use crate::rirc_schema::channels::dsl::*;
+    use crate::rirc_schema::channels;
+
+    let memberships = get_all_user_memberships(connection, nick).unwrap();
+
+    for membership in memberships {
+        let channel = get_channel_from_id(connection, &membership.id_channel).unwrap().name;
+
+        add_message(connection, channel.as_str(), nick, w_content.as_str())
+    }
+
+    Ok(())
+}
+
 /// Queryable public struct linked to database using Diesel.
 #[derive(Queryable)]
 pub struct Setting {
     pub id: i32,
     pub key: String,
     pub content: String,
-}
-
-/// Insertable struct linked to database using Diesel.
-#[derive(Insertable)]
-#[diesel(table_name = settings)]
-struct NewSetting<'a> {
-    pub key: &'a str,
-    pub content: &'a str,
 }
 
 /// Public function that will return a `Setting` when given it's `key`
@@ -700,6 +709,54 @@ pub fn get_last_membership<'a>(connection: &mut MysqlConnection) -> Result<Membe
 
     if membership.len() > 0 {
         Ok(membership.nth(0).unwrap())
+    } else {
+        Err(NoResultInDatabase)
+    }
+}
+
+/// Public function used to return all memberships linked to a certain user_id,
+///
+/// Example:
+/// ```rust
+/// let connection = &mut establish_connection();
+/// get_all_user_memberships(connection, "j0hndoe");
+/// ```
+pub fn get_all_user_memberships(connection: &mut MysqlConnection, nick: &str) -> Result<Vec<Membership>, Error> {
+    use crate::rirc_schema::memberships::dsl::*;
+
+    let user = get_user(connection, nick).unwrap();
+
+    let mut membership = memberships
+        .filter(id_user.eq(user.id))
+        .load::<Membership>(connection)
+        .expect("Error loading memberships");
+
+    if membership.len() > 0 {
+        Ok(membership)
+    } else {
+        Err(NoResultInDatabase)
+    }
+}
+
+/// Public function used to return all memberships linked to a certain channel_id,
+///
+/// Example:
+/// ```rust
+/// let connection = &mut establish_connection();
+/// get_all_channel_memberships(connection, "j0hndoe");
+/// ```
+pub fn get_all_channel_memberships(connection: &mut MysqlConnection, nick: &str) -> Result<Vec<Membership>, Error> {
+    use crate::rirc_schema::memberships::dsl::*;
+
+    let user = get_user(connection, nick).unwrap();
+
+    let mut membership = memberships
+        .filter(id_user.eq(user.id))
+        .load::<Membership>(connection)
+        .expect("Error loading memberships");
+
+    if membership.len() > 0 {
+        Ok(membership)
     } else {
         Err(NoResultInDatabase)
     }

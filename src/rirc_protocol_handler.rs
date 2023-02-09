@@ -261,9 +261,17 @@ fn user(connection: &mut MysqlConnection, content: String) -> Result<Response, I
 fn quit(connection: &mut MysqlConnection, thread_id: i32) -> Result<Response, IrcError> {
     set_connected_from_thread_id(connection, &thread_id, &false).unwrap();
 
+    let user = get_user_from_thread_id(connection, &thread_id).unwrap();
+    let line = (":" + user.nick.as_str() + "!" + user.nick.as_str() + "@" + user.last_ip.as_str() + " PART ")
+
+    // TODO: broadcast when leave/joib
+    // TODO: communication entre clients correct
+
+    broadcast_as_user(connection, , ":")
+
     Ok(Response::new("BYE BYE".to_string()))
 }
 
 fn unimplemented() -> Result<Response, IrcError> {
-    Err(None)
+    Ok(Response::new("".to_string()))
 }
