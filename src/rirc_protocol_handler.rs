@@ -19,14 +19,15 @@ pub fn worker(connection: &mut MysqlConnection, request: Request, addr: String, 
         NICK => nick(connection, request.content, addr, thread_id),
         PRIVMSG => privmsg(connection, thread_id, request.content),
         JOIN => join(connection, thread_id, request.clone().content, stream),
-        MOTD => unimplemented(),
+        MOTD => unimplemented(), // TODO
         PING => ping(request.content),
-        PONG => unimplemented(),
+        PONG => unimplemented(), // Don't reply to pongs otherwise we will just massively ping pong all day
         QUIT => quit(connection, thread_id),
         USER => user(connection, request.content),
-        SKIP => unimplemented(),
         WHOIS => whois(connection, request.content, thread_id),
         WHOWAS => whowas(connection, request.content, thread_id),
+
+        // TODO: KICK, KILL, USERS, SERVLIST (?)
         _ => unimplemented(),
     }
 }
@@ -36,9 +37,8 @@ fn join(connection: &mut MysqlConnection, thread_id: i32, content: String, strea
     // Expecting message such as
     // JOIN <channel>{,<channel>} [<key>{,<key>}]
 
-    let wtf = &content.clone();
-
-    let channel = first_word(wtf.as_str());
+    let binding = content.clone(); // ???????? RUST HELLO ???
+    let channel = first_word(&binding);
 
     if channel.contains(",") {
         return Err(TooManyChannels)
@@ -50,7 +50,7 @@ fn join(connection: &mut MysqlConnection, thread_id: i32, content: String, strea
 
     // Preparing to send a message such as ":WiZ JOIN #Twilight_zone" in the channel
     let nick = get_user_from_thread_id(connection, &thread_id).unwrap().nick;
-    let line = ":".to_string() + nick.clone().as_str() + " JOIN #" + channel;
+    let line = ":".to_string() + nick.clone().as_str() + "!" + nick.clone().as_str() + "@" + get_user(connection, nick.clone().as_str()).unwrap().last_ip.as_str() + " ";
 
     // Sending
     add_message(connection, channel, nick.as_str(), line.as_str()).unwrap();
@@ -58,7 +58,7 @@ fn join(connection: &mut MysqlConnection, thread_id: i32, content: String, strea
     // Add membership to the table, so child thread knows what to do
     create_membership(connection, nick.as_str(), channel);
 
-    spawn(move || {
+    spawn(|| {
         let connection = &mut establish_connection();
 
         // Thread will finally start waiting for messages
@@ -78,15 +78,27 @@ fn privmsg(connection: &mut MysqlConnection, thread_id: i32, content: String) ->
     // PRIVMSG <receiver>{,<receiver>} <text to be sent>
     let mut content_vec: Vec<&str> = content.split_whitespace().collect();
 
-    let receiver = content_vec[0];
-    let sender = get_user_from_thread_id(connection, &thread_id).unwrap().nick;
+    let mut receiver = content_vec[0];
+    let receiver_with_hashtag = "#".to_string() + receiver.clone();
+
+    // Testing receiver as both user and channel, also testing channel as both #`receiver` and `receiver`
+    // Because some irc client add #, some don't :DDDDDD
+    if get_user(connection, receiver).is_err() && get_channel(connection, receiver).is_err() {
+        if get_channel(connection, receiver_with_hashtag.as_str()).is_ok() {
+            receiver = receiver_with_hashtag.as_str();
+        } else {
+            return Err(NoSuchChannel)
+        }
+    }
+
+    let sender = get_user_from_thread_id(connection, &thread_id).unwrap();
 
     // We won't handle sending to multiple recipients
     if receiver.contains(",") {
         return Err(TooManyTargets)
     }
 
-    let mut message = "".to_string();
+    let mut message = ":".to_string() + sender.nick.as_str() + "!" + sender.nick.as_str() + "@" + sender.last_ip.as_str() + " PRIVMSG " + receiver + " :";
 
     for word in &mut content_vec[1..] {
         for char in word.chars() {
@@ -95,7 +107,7 @@ fn privmsg(connection: &mut MysqlConnection, thread_id: i32, content: String) ->
         message = message + " ";
     }
 
-    add_message(connection, receiver, &*sender, &*message)?;
+    add_message(connection, receiver, &*sender.nick, &*message)?;
 
     Ok(Response::new("".to_string()))
 }
@@ -262,12 +274,11 @@ fn quit(connection: &mut MysqlConnection, thread_id: i32) -> Result<Response, Ir
     set_connected_from_thread_id(connection, &thread_id, &false).unwrap();
 
     let user = get_user_from_thread_id(connection, &thread_id).unwrap();
-    let line = (":" + user.nick.as_str() + "!" + user.nick.as_str() + "@" + user.last_ip.as_str() + " PART ")
 
-    // TODO: broadcast when leave/joib
-    // TODO: communication entre clients correct
+    // [channel] gets replaced by whatever the channel name is inside the function `broadcast_as_user`
+    let line = ":".to_string() + user.nick.as_str() + " PART [channel]";
 
-    broadcast_as_user(connection, , ":")
+    broadcast_as_user(connection, user.nick.as_str(), line.to_string()).unwrap();
 
     Ok(Response::new("BYE BYE".to_string()))
 }

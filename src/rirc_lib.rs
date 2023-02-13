@@ -35,9 +35,9 @@ pub enum Commands {
     // Supported commands
     CAP, NICK, PRIVMSG, JOIN, MOTD, PING, PONG, QUIT, USER, WHOIS, WHOWAS,
 
-    // Unsupported commands
-    SKIP, // Call sent for unsupported commands
+    SKIP,
 
+    // Unsupported commands
     ADMIN, AWAY, CNOTE, CONNECT, DIE, ENCAP, ERROR, HELP, INFO, INVITE, ISON, KICK, KILL,
     KNOCK, LINKS, LIST, LUSERS, MODE, NAMES, NOTICE, OPER, PART, PASS, REHASH, RULES, SERVER,
     SERVICE, SERVLIST, SQUERY, SQUIT, SETNAME, SILENCE, STATS, SUMMON, TIME, TOPIC, TRACE,
@@ -64,7 +64,7 @@ impl Commands {
             "USER" => Ok(USER),
             "WHOIS" => Ok(WHOIS),
             "WHOWAS" => Ok(WHOWAS),
-            _ => Ok(SKIP), //Err(Error::InvalidRequest),
+            _ => Ok(SKIP),
         }
     }
 }
@@ -614,7 +614,8 @@ pub fn add_message(connection: &mut MysqlConnection, channel: &str, nick: &str, 
         return Err(NoSuchChannel);
     }
 
-    let line = (nick.to_string() + " " + w_content);
+    let line = w_content;
+        //(nick.to_string() + " " + w_content);
 
     diesel::update(channels::table)
         .filter(name.eq(channel))
@@ -627,15 +628,13 @@ pub fn add_message(connection: &mut MysqlConnection, channel: &str, nick: &str, 
 
 /// Function used to send in every channel a user is in
 pub fn broadcast_as_user(connection: &mut MysqlConnection, nick: &str, w_content: String) -> Result<(), IrcError> {
-    use crate::rirc_schema::channels::dsl::*;
-    use crate::rirc_schema::channels;
-
     let memberships = get_all_user_memberships(connection, nick).unwrap();
 
     for membership in memberships {
         let channel = get_channel_from_id(connection, &membership.id_channel).unwrap().name;
 
-        add_message(connection, channel.as_str(), nick, w_content.as_str())
+        // cant turn the line into a fucking variable because this language hates me
+        add_message(connection, channel.as_str(), nick, w_content.clone().replace("[channel]", channel.as_str()).as_str()).unwrap();
     }
 
     Ok(())
@@ -762,6 +761,7 @@ pub fn get_all_channel_memberships(connection: &mut MysqlConnection, nick: &str)
     }
 }
 
+/// Public function used to create memberships
 pub fn create_membership(connection: &mut MysqlConnection, nick: &str, channel: &str) {
     use crate::rirc_schema::memberships;
 

@@ -1,5 +1,8 @@
 use std::net::TcpStream;
+use std::thread::sleep;
+use std::time::Duration;
 use diesel::MysqlConnection;
+use log::trace;
 use crate::rirc_conn_handler::sender;
 use crate::rirc_lib::*;
 
@@ -18,18 +21,17 @@ pub fn wait_for_message(connection: &mut MysqlConnection, mut stream: TcpStream)
     let owner = user.nick.as_str();
 
     loop {
+        trace!("oui");
         // get channel's last message
         let new_message = get_channel_from_id(connection, &membership.id_channel).unwrap().content;
 
         // if message is not new, ignore
         if new_message == message {
-            message = new_message;
-
             continue
         }
 
         // if message is sent by thread owner, ignore
-        if message.starts_with(owner) || message.starts_with(&(":".to_string() + owner)) {
+        if message.starts_with(&(":".to_string() + owner)) {
             message = new_message;
 
             continue
@@ -41,5 +43,7 @@ pub fn wait_for_message(connection: &mut MysqlConnection, mut stream: TcpStream)
         // TODO: if channel 's content is user leaving, close thread
 
         message = new_message;
+
+        sleep(Duration::from_millis(500000))
     }
 }
