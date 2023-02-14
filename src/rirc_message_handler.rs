@@ -3,7 +3,6 @@ use std::time::Duration;
 use diesel::MysqlConnection;
 use log::trace;
 use spin_sleep::LoopHelper;
-
 use crate::rirc_conn_handler::sender;
 use crate::rirc_lib::*;
 
@@ -43,6 +42,11 @@ pub fn wait_for_message(connection: &mut MysqlConnection, mut stream: TcpStream)
         // if message is sent by thread owner, ignore
         if message.starts_with(&(":".to_string() + owner)) {
             message = new_message;
+
+            if message.contains("PART") {
+                delete_user_membership(connection, owner);
+                break
+            }
 
             // Sleeps
             loop_helper.loop_sleep();

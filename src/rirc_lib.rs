@@ -776,6 +776,18 @@ pub fn create_membership(connection: &mut MysqlConnection, nick: &str, channel: 
         .expect("Error saving new membership");
 }
 
+pub fn delete_user_membership(connection: &mut MysqlConnection, w_nick: &str) {
+    use crate::rirc_schema::memberships;
+    use crate::rirc_schema::memberships::dsl::*;
+
+    let user_id = get_user(connection, w_nick).unwrap().id;
+
+    diesel::delete(memberships::table)
+        .filter(id_user.eq(user_id))
+        .execute(connection)
+        .expect("Error removing memberships");
+}
+
 /// Returns only the first word of the given `str`.
 pub fn first_word(content: &str) -> &str {
     content.split_whitespace().next().unwrap_or(&*content)

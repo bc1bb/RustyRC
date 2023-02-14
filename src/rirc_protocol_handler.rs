@@ -49,8 +49,8 @@ fn join(connection: &mut MysqlConnection, thread_id: i32, content: String, strea
     }
 
     // Preparing to send a message such as ":WiZ JOIN #Twilight_zone" in the channel
-    let nick = get_user_from_thread_id(connection, &thread_id).unwrap().nick;
-    let line = ":".to_string() + nick.clone().as_str() + "!" + nick.clone().as_str() + "@" + get_user(connection, nick.clone().as_str()).unwrap().last_ip.as_str() + " ";
+    let user = get_user_from_thread_id(connection, &thread_id).unwrap();
+    let line = create_user_line(user, "JOIN ") + channel;
 
     // Sending
     add_message(connection, channel, nick.as_str(), line.as_str()).unwrap();
@@ -98,7 +98,7 @@ fn privmsg(connection: &mut MysqlConnection, thread_id: i32, content: String) ->
         return Err(TooManyTargets)
     }
 
-    let mut message = ":".to_string() + sender.nick.as_str() + "!" + sender.nick.as_str() + "@" + sender.last_ip.as_str() + " PRIVMSG " + receiver + " :";
+    let mut message = create_user_line(sender, "PRIVMSG " + receiver + " :");
 
     for word in &mut content_vec[1..] {
         for char in word.chars() {
@@ -271,9 +271,9 @@ fn user(connection: &mut MysqlConnection, content: String) -> Result<Response, I
 
 /// User quitting server
 fn quit(connection: &mut MysqlConnection, thread_id: i32) -> Result<Response, IrcError> {
-    set_connected_from_thread_id(connection, &thread_id, &false).unwrap();
-
     let user = get_user_from_thread_id(connection, &thread_id).unwrap();
+
+    set_connected_from_thread_id(connection, &thread_id, &false).unwrap();
 
     // [channel] gets replaced by whatever the channel name is inside the function `broadcast_as_user`
     let line = ":".to_string() + user.nick.as_str() + " PART [channel]";
@@ -283,6 +283,17 @@ fn quit(connection: &mut MysqlConnection, thread_id: i32) -> Result<Response, Ir
     Ok(Response::new("BYE BYE".to_string()))
 }
 
+/// Function used when clients call for unsupported commands
+///
+/// Sending an empty response wil make sender() not send anything
 fn unimplemented() -> Result<Response, IrcError> {
     Ok(Response::new("".to_string()))
+}
+
+/// Function used to create a user line when user is leaving/joining channel/server or sending a message
+fn create_user_line(user: User, content: &str) -> String {
+    let nick = user.nick;
+    let last_ip = user.last_ip;
+
+    return ":".to_string() + nick.as_str() + "!" + nick.as_str() + "@" + last_ip.as_str() + " " + content
 }
