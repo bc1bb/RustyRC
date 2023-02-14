@@ -1,12 +1,18 @@
 use std::net::TcpStream;
-use std::thread::sleep;
 use std::time::Duration;
 use diesel::MysqlConnection;
 use log::trace;
+use spin_sleep::LoopHelper;
+
 use crate::rirc_conn_handler::sender;
 use crate::rirc_lib::*;
 
 pub fn wait_for_message(connection: &mut MysqlConnection, mut stream: TcpStream) {
+    // Using spin_sleep::LoopHelper to build a loop
+    let mut loop_helper = LoopHelper::builder()
+        .report_interval_s(0.5)
+        .build_with_target_rate(0.5); // Every half a second
+
     // fetch last membership in db (so we know whats our purpose)
     let membership = get_last_membership(connection).unwrap();
 
@@ -21,18 +27,25 @@ pub fn wait_for_message(connection: &mut MysqlConnection, mut stream: TcpStream)
     let owner = user.nick.as_str();
 
     loop {
-        trace!("oui");
+        loop_helper.loop_start();
+
         // get channel's last message
         let new_message = get_channel_from_id(connection, &membership.id_channel).unwrap().content;
 
         // if message is not new, ignore
         if new_message == message {
+            // Sleeps
+            loop_helper.loop_sleep();
+
             continue
         }
 
         // if message is sent by thread owner, ignore
         if message.starts_with(&(":".to_string() + owner)) {
             message = new_message;
+
+            // Sleeps
+            loop_helper.loop_sleep();
 
             continue
         }
@@ -44,6 +57,7 @@ pub fn wait_for_message(connection: &mut MysqlConnection, mut stream: TcpStream)
 
         message = new_message;
 
-        sleep(Duration::from_millis(500000))
+        // Sleeps
+        loop_helper.loop_sleep();
     }
 }
