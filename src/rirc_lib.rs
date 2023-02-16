@@ -188,7 +188,7 @@ pub fn establish_connection() -> MysqlConnection {
 }
 
 /// Queryable public struct linked to database using Diesel.
-#[derive(Queryable)]
+#[derive(Queryable,Clone)]
 pub struct User {
     pub id: i32,
     pub last_login: i64,
@@ -628,7 +628,8 @@ pub fn add_message(connection: &mut MysqlConnection, channel: &str, nick: &str, 
 
 /// Function used to send in every channel a user is in
 pub fn broadcast_as_user(connection: &mut MysqlConnection, nick: &str, w_content: String) -> Result<(), IrcError> {
-    let memberships = get_all_user_memberships(connection, nick).unwrap();
+    let user = get_user(connection, nick).unwrap();
+    let memberships = get_all_user_memberships(connection, user.id).unwrap();
 
     for membership in memberships {
         let channel = get_channel_from_id(connection, &membership.id_channel).unwrap().name;
@@ -720,13 +721,11 @@ pub fn get_last_membership<'a>(connection: &mut MysqlConnection) -> Result<Membe
 /// let connection = &mut establish_connection();
 /// get_all_user_memberships(connection, "j0hndoe");
 /// ```
-pub fn get_all_user_memberships(connection: &mut MysqlConnection, nick: &str) -> Result<Vec<Membership>, Error> {
+pub fn get_all_user_memberships(connection: &mut MysqlConnection, w_id: i32) -> Result<Vec<Membership>, Error> {
     use crate::rirc_schema::memberships::dsl::*;
 
-    let user = get_user(connection, nick).unwrap();
-
-    let mut membership = memberships
-        .filter(id_user.eq(user.id))
+    let membership = memberships
+        .filter(id_user.eq(w_id))
         .load::<Membership>(connection)
         .expect("Error loading memberships");
 

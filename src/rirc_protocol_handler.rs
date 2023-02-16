@@ -50,13 +50,13 @@ fn join(connection: &mut MysqlConnection, thread_id: i32, content: String, strea
 
     // Preparing to send a message such as ":WiZ JOIN #Twilight_zone" in the channel
     let user = get_user_from_thread_id(connection, &thread_id).unwrap();
-    let line = create_user_line(user, "JOIN ") + channel;
+    let line = create_user_line(user.clone(), "JOIN ") + channel;
 
     // Sending
-    add_message(connection, channel, nick.as_str(), line.as_str()).unwrap();
+    add_message(connection, channel, user.nick.as_str(), line.as_str()).unwrap();
 
     // Add membership to the table, so child thread knows what to do
-    create_membership(connection, nick.as_str(), channel);
+    create_membership(connection, user.nick.as_str(), channel);
 
     spawn(|| {
         let connection = &mut establish_connection();
@@ -98,7 +98,7 @@ fn privmsg(connection: &mut MysqlConnection, thread_id: i32, content: String) ->
         return Err(TooManyTargets)
     }
 
-    let mut message = create_user_line(sender, "PRIVMSG " + receiver + " :");
+    let mut message = create_user_line(sender.clone(), "PRIVMSG ") + receiver + " :";
 
     for word in &mut content_vec[1..] {
         for char in word.chars() {
@@ -273,12 +273,12 @@ fn user(connection: &mut MysqlConnection, content: String) -> Result<Response, I
 fn quit(connection: &mut MysqlConnection, thread_id: i32) -> Result<Response, IrcError> {
     let user = get_user_from_thread_id(connection, &thread_id).unwrap();
 
-    set_connected_from_thread_id(connection, &thread_id, &false).unwrap();
-
     // [channel] gets replaced by whatever the channel name is inside the function `broadcast_as_user`
     let line = ":".to_string() + user.nick.as_str() + " PART [channel]";
 
     broadcast_as_user(connection, user.nick.as_str(), line.to_string()).unwrap();
+
+    set_connected_from_thread_id(connection, &thread_id, &false).unwrap();
 
     Ok(Response::new("BYE BYE".to_string()))
 }
