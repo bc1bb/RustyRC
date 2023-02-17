@@ -20,6 +20,8 @@ pub fn worker(connection: &mut MysqlConnection, request: Request, addr: String, 
         PRIVMSG => privmsg(connection, thread_id, request.content),
         JOIN => join(connection, thread_id, request.clone().content, stream),
         MOTD => unimplemented(), // TODO
+        NAMES => names(connection, thread_id, request.clone().content),
+        PART => part(connection, thread_id, request.clone().content),
         PING => ping(request.content),
         PONG => unimplemented(), // Don't reply to pongs otherwise we will just massively ping pong all day
         QUIT => quit(connection, thread_id),
@@ -50,10 +52,10 @@ fn join(connection: &mut MysqlConnection, thread_id: i32, content: String, strea
 
     // Preparing to send a message such as ":WiZ JOIN #Twilight_zone" in the channel
     let user = get_user_from_thread_id(connection, &thread_id).unwrap();
-    let line = create_user_line(user.clone(), "JOIN ") + channel;
+    let line = create_user_line(user.clone(), "JOIN :") + channel;
 
     // Sending
-    add_message(connection, channel, user.nick.as_str(), line.as_str()).unwrap();
+    add_message(connection, channel, line.as_str()).unwrap();
 
     // Add membership to the table, so child thread knows what to do
     create_membership(connection, user.nick.as_str(), channel);
@@ -69,7 +71,93 @@ fn join(connection: &mut MysqlConnection, thread_id: i32, content: String, strea
     let motd = get_channel(connection, channel).unwrap().motd;
     let line = "332 :".to_string() + motd.as_str();
 
-    Ok(Response::new(line))
+    Ok(names(connection, thread_id, channel.to_string()).unwrap())
+}
+
+/// Handling user leaving a channel
+fn part(connection: &mut MysqlConnection, thread_id: i32, content: String) -> Result<Response, IrcError> {
+    let channel_str = first_word(content.as_str());
+
+    let user = get_user_from_thread_id(connection, &thread_id).unwrap();
+
+    if channel_str.contains(",") {
+        return Err(TooManyChannels);
+    }
+
+    if get_channel(connection, channel_str).is_err() {
+        return Err(NoSuchChannel);
+    }
+    let channel = get_channel(connection, channel_str).unwrap();
+
+    let mut user_in_channel = false;
+
+    for membership in get_all_user_memberships(connection, user.id).unwrap() {
+        if membership.id_channel == channel.id {
+            user_in_channel = true;
+            break
+        }
+    }
+
+    if ! user_in_channel {
+        return Err(NotOnChannel);
+    }
+
+    let line = create_user_line(user, "PART") + channel_str;
+    add_message(connection, channel.name.as_str(), line.as_str()).unwrap();
+
+    Ok(Response::new("".to_string()))
+}
+
+/// Replying to NAMES commands,
+///
+/// Without argument (empty `content`) it will print all channels and logged users,
+///
+/// With an argument it will print users in said channel.
+fn names(connection: &mut MysqlConnection, thread_id: i32, content: String) -> Result<Response,IrcError> {
+    // Expecting input as (RFC1459):
+    // NAMES [<channel>{,<channel>}]
+
+    // RPL_NAMREPLY: 353
+    // RPL_ENDOFNAMES: 366
+
+    let user = get_user_from_thread_id(connection, &thread_id).unwrap();
+    let mut res_string = "".to_string();
+
+    // expecting answer for all channels
+    if content.is_empty() {
+        for channel in get_all_channels(connection).unwrap() {
+            // 353 "<channel> :[[@|+]<nick> [[@|+]<nick> [...]]]"
+            res_string = ":localhost 353 ".to_string() + user.nick.as_str() + " = " + channel.name.as_str() + " :";
+            for membership in get_all_channel_memberships(connection, channel.id).unwrap() {
+                res_string = res_string + get_user_from_id(connection, &membership.id_user).unwrap().nick.as_str() + " ";
+            }
+
+            res_string = res_string + "\n:localhost 366 " + user.nick.as_str() + " " + channel.name.as_str() + " :End of /NAMES list.";
+        }
+    }
+
+    // expecting answer for specific channel
+    if content.contains(",") {
+        return Err(TooManyTargets);
+    }
+
+    let channel = content.as_str();
+
+    // target channel doesnt exist
+    if get_channel(connection, content.as_str()).is_err() {
+        return Err(NoSuchChannel);
+    }
+    let channel_id = get_channel(connection, content.as_str()).unwrap().id;
+
+    // 353 "<channel> :[[@|+]<nick> [[@|+]<nick> [...]]]"
+    res_string = ":localhost 353 ".to_string() + user.nick.as_str() + " = " + channel + " :";
+    for membership in get_all_channel_memberships(connection, channel_id).unwrap() {
+        res_string = res_string + get_user_from_id(connection, &membership.id_user).unwrap().nick.as_str() + " ";
+    }
+
+    res_string = res_string + "\n:localhost 366 " + user.nick.as_str() + " " + channel + " :End of /NAMES list.";
+
+    Ok(Response::new(res_string))
 }
 
 /// Handling user sending message to channel
@@ -107,7 +195,7 @@ fn privmsg(connection: &mut MysqlConnection, thread_id: i32, content: String) ->
         message = message + " ";
     }
 
-    add_message(connection, receiver, &*sender.nick, &*message)?;
+    add_message(connection, receiver, &*message)?;
 
     Ok(Response::new("".to_string()))
 }

@@ -8,6 +8,7 @@ use std::env;
 use std::net::{IpAddr, Ipv4Addr};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::vec::IntoIter;
+use diesel::dsl::not;
 use diesel::prelude::*;
 use diesel::mysql::MysqlConnection;
 use dotenvy::dotenv;
@@ -33,13 +34,13 @@ impl Response {
 #[allow(dead_code)]
 pub enum Commands {
     // Supported commands
-    CAP, NICK, PRIVMSG, JOIN, MOTD, PING, PONG, QUIT, USER, WHOIS, WHOWAS,
+    CAP, NICK, PART, PRIVMSG, JOIN, MOTD, NAMES, PING, PONG, QUIT, USER, WHOIS, WHOWAS,
 
     SKIP,
 
     // Unsupported commands
     ADMIN, AWAY, CNOTE, CONNECT, DIE, ENCAP, ERROR, HELP, INFO, INVITE, ISON, KICK, KILL,
-    KNOCK, LINKS, LIST, LUSERS, MODE, NAMES, NOTICE, OPER, PART, PASS, REHASH, RULES, SERVER,
+    KNOCK, LINKS, LIST, LUSERS, MODE, NOTICE, OPER, PASS, REHASH, RULES, SERVER,
     SERVICE, SERVLIST, SQUERY, SQUIT, SETNAME, SILENCE, STATS, SUMMON, TIME, TOPIC, TRACE,
     USERHOST, USERIP, USERS, VERSION, WALLOPS, WATCH, WHO,
 }
@@ -55,9 +56,11 @@ impl Commands {
         match content {
             "CAP" => Ok(CAP),
             "NICK" => Ok(NICK),
+            "PART" => Ok(PART),
             "PRIVMSG" => Ok(PRIVMSG),
             "JOIN" => Ok(JOIN),
             "MOTD" => Ok(MOTD),
+            "NAMES" => Ok(NAMES),
             "PING" => Ok(PING),
             "PONG" => Ok(PONG),
             "QUIT" => Ok(QUIT),
@@ -121,6 +124,7 @@ pub enum IrcError {
     TooManyTargets, // 407: ERR_TOOMANYTARGETS
     ErroneusNickname, // 432: ERR_ERRONEUSNICKNAME
     NicknameInUse, // 433: ERR_NICKNAMEINUSE
+    NotOnChannel, // 442: ERR_NOTONCHANNEL
     NeedMoreParams, // 461: ERR_NEEDMOREPARAMS
     YoureBannedCreep, // 465: ERR_YOUREBANNEDCREEP
     YouWillBeBanned, // 466: ERR_YOUWILLBEBANNED
@@ -143,6 +147,7 @@ impl IrcError {
             TooManyTargets => 407,
             ErroneusNickname => 432,
             NicknameInUse => 433,
+            NotOnChannel => 442,
             NeedMoreParams => 461,
             YoureBannedCreep => 465,
             YouWillBeBanned => 466,
@@ -165,9 +170,10 @@ impl IrcError {
             TooManyTargets => ":Too Many Targets", // 407
             ErroneusNickname => ":Erroneus Nickname", // 432
             NicknameInUse => ":Nickname In Use", // 433
+            NotOnChannel => ":Not On Channel", // 442
             NeedMoreParams => ":Need More Params", // 461
             YoureBannedCreep => ":You're Banned, Creep", // 465
-            YouWillBeBanned => ":You Will Be Banned", //466
+            YouWillBeBanned => ":You Will Be Banned", // 466
         }
     }
 }
@@ -586,6 +592,27 @@ pub fn get_channel_from_id<'a>(connection: &mut MysqlConnection, w_id: &i32) -> 
     }
 }
 
+// Public function that will return all `Channel`s,
+///
+/// Example:
+/// ```rust
+/// let connection = &mut establish_connection();
+/// get_all_channels(connection);
+/// ```
+pub fn get_all_channels<'a>(connection: &mut MysqlConnection) -> Result<Vec<Channel>, Error> {
+    use crate::rirc_schema::channels::dsl::*;
+
+    let channel = channels
+        .load::<Channel>(connection)
+        .expect("Error loading users");
+
+    if channel.len() > 0 {
+        Ok(channel)
+    } else {
+        Err(NoResultInDatabase)
+    }
+}
+
 /// Public function that handles creating channels,
 ///
 /// Example:
@@ -605,7 +632,7 @@ pub fn create_channel(connection: &mut MysqlConnection, name: &str, creation_tim
 }
 
 /// Function used to add message when user sends PRIVMSG command
-pub fn add_message(connection: &mut MysqlConnection, channel: &str, nick: &str, w_content: &str) -> Result<(), IrcError> {
+pub fn add_message(connection: &mut MysqlConnection, channel: &str, w_content: &str) -> Result<(), IrcError> {
     use crate::rirc_schema::channels::dsl::*;
     use crate::rirc_schema::channels;
 
@@ -635,7 +662,7 @@ pub fn broadcast_as_user(connection: &mut MysqlConnection, nick: &str, w_content
         let channel = get_channel_from_id(connection, &membership.id_channel).unwrap().name;
 
         // cant turn the line into a fucking variable because this language hates me
-        add_message(connection, channel.as_str(), nick, w_content.clone().replace("[channel]", channel.as_str()).as_str()).unwrap();
+        add_message(connection, channel.as_str(), w_content.clone().replace("[channel]", channel.as_str()).as_str()).unwrap();
     }
 
     Ok(())
@@ -719,7 +746,7 @@ pub fn get_last_membership<'a>(connection: &mut MysqlConnection) -> Result<Membe
 /// Example:
 /// ```rust
 /// let connection = &mut establish_connection();
-/// get_all_user_memberships(connection, "j0hndoe");
+/// get_all_user_memberships(connection, 12);
 /// ```
 pub fn get_all_user_memberships(connection: &mut MysqlConnection, w_id: i32) -> Result<Vec<Membership>, Error> {
     use crate::rirc_schema::memberships::dsl::*;
@@ -741,15 +768,13 @@ pub fn get_all_user_memberships(connection: &mut MysqlConnection, w_id: i32) -> 
 /// Example:
 /// ```rust
 /// let connection = &mut establish_connection();
-/// get_all_channel_memberships(connection, "j0hndoe");
+/// get_all_channel_memberships(connection, 12);
 /// ```
-pub fn get_all_channel_memberships(connection: &mut MysqlConnection, nick: &str) -> Result<Vec<Membership>, Error> {
+pub fn get_all_channel_memberships(connection: &mut MysqlConnection, w_id: i32) -> Result<Vec<Membership>, Error> {
     use crate::rirc_schema::memberships::dsl::*;
 
-    let user = get_user(connection, nick).unwrap();
-
     let mut membership = memberships
-        .filter(id_user.eq(user.id))
+        .filter(id_channel.eq(w_id))
         .load::<Membership>(connection)
         .expect("Error loading memberships");
 
@@ -783,6 +808,16 @@ pub fn delete_user_membership(connection: &mut MysqlConnection, w_nick: &str) {
 
     diesel::delete(memberships::table)
         .filter(id_user.eq(user_id))
+        .execute(connection)
+        .expect("Error removing memberships");
+}
+
+pub fn delete_membership(connection: &mut MysqlConnection, w_id: i32) {
+    use crate::rirc_schema::memberships;
+    use crate::rirc_schema::memberships::dsl::*;
+
+    diesel::delete(memberships::table)
+        .filter(id.eq(w_id))
         .execute(connection)
         .expect("Error removing memberships");
 }

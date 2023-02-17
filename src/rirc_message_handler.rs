@@ -44,7 +44,7 @@ pub fn wait_for_message(connection: &mut MysqlConnection, mut stream: TcpStream)
             message = new_message;
 
             if message.contains("PART") {
-                delete_user_membership(connection, owner);
+                delete_membership(connection, membership.id);
                 break
             }
 
