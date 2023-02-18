@@ -236,9 +236,9 @@ pub struct NewUser<'a> {
 /// Example:
 /// ```rust
 /// let connection = &mut establish_connection();
-/// get_user(connection, "johndoe");
+/// get_user_from_nick(connection, "johndoe");
 /// ```
-pub fn get_user<'a>(connection: &mut MysqlConnection,  w_nick: &str) -> Result<User, Error> {
+pub fn get_user_from_nick<'a>(connection: &mut MysqlConnection, w_nick: &str) -> Result<User, Error> {
     use crate::rirc_schema::users::dsl::*;
 
     let mut user = users
@@ -281,10 +281,13 @@ pub fn get_user_from_thread_id<'a>(connection: &mut MysqlConnection,  w_thread_i
 
 /// Public function that will return a `User` when given its `id`,
 ///
+/// This function is **unreliable** users might change their database id by changing nicknames !
+/// `thread_id` are more reliable because when users are renamed, it is moved to the new nickname.
+///
 /// Example:
 /// ```rust
 /// let connection = &mut establish_connection();
-/// get_user_from_thread_id(connection, &24);
+/// get_user_from_id(connection, &24);
 /// ```
 pub fn get_user_from_id<'a>(connection: &mut MysqlConnection,  w_id: &i32) -> Result<User, Error> {
     use crate::rirc_schema::users::dsl::*;
@@ -344,7 +347,7 @@ pub fn edit_user(connection: &mut MysqlConnection,
     use crate::rirc_schema::users::dsl::*;
     use crate::rirc_schema::users;
 
-    if get_user(connection, w_nick).is_err() {
+    if get_user_from_nick(connection, w_nick).is_err() {
         return Err(NoResultInDatabase);
     }
 
@@ -375,24 +378,14 @@ pub fn edit_user(connection: &mut MysqlConnection,
     Ok(())
 }
 
-/// Public function that set `is_connected` to `w_is_connected` from `thread_id`,
-///
-/// Example:
-/// ```rust
-/// let connection = &mut establish_connection();
-/// set_connected_from_thread_id(connection, &23, &false);
-/// ```
-pub fn set_connected_from_thread_id(connection: &mut MysqlConnection,
-                                    w_thread_id: &i32, w_is_connected: &bool) -> Result<(), Error> {
+/// Public function that sets `is_connected` to `w_is_connected` when given a certain `User`.
+pub fn set_connected(connection: &mut MysqlConnection,
+                     user: User, w_is_connected: &bool) {
     use crate::rirc_schema::users::dsl::*;
     use crate::rirc_schema::users;
 
-    if get_user_from_thread_id(connection, w_thread_id).is_err() {
-        return Err(NoResultInDatabase);
-    }
-
     diesel::update(users::table)
-        .filter(thread_id.eq(w_thread_id))
+        .filter(id.eq(user.id))
         .set(is_connected.eq(w_is_connected))
         .execute(connection)
         .expect("Error editing user");
@@ -400,13 +393,11 @@ pub fn set_connected_from_thread_id(connection: &mut MysqlConnection,
     // if we want to declare our user as logged off
     if ! w_is_connected {
         diesel::update(users::table)
-            .filter(thread_id.eq(w_thread_id))
+            .filter(thread_id.eq(user.thread_id))
             .set(thread_id.eq(-1))
             .execute(connection)
             .expect("Error editing user");
     }
-
-    Ok(())
 }
 
 /// Public function that sets `real_name` to `w_real_name` from `nick`,
@@ -417,21 +408,15 @@ pub fn set_connected_from_thread_id(connection: &mut MysqlConnection,
 /// set_real_name(connection, "johndoe", "John Doe");
 /// ```
 pub fn set_real_name(connection: &mut MysqlConnection,
-                     w_nick: &str, w_real_name: &str) -> Result<(), Error> {
+                     user: User, w_real_name: &str) {
     use crate::rirc_schema::users::dsl::*;
     use crate::rirc_schema::users;
 
-    if get_user(connection, w_nick).is_err() {
-        return Err(NoResultInDatabase);
-    }
-
     diesel::update(users::table)
-        .filter(nick.eq(w_nick))
+        .filter(id.eq(user.id))
         .set(real_name.eq(w_real_name))
         .execute(connection)
         .expect("Error editing user");
-
-    Ok(())
 }
 
 /// Public function that cleans database, it will set all users to logged off and set all threads id to -1
@@ -662,7 +647,7 @@ pub fn add_message(connection: &mut MysqlConnection, channel: &str, w_content: &
 
 /// Function used to send in every channel a user is in
 pub fn broadcast_as_user(connection: &mut MysqlConnection, nick: &str, w_content: String) -> Result<(), IrcError> {
-    let user = get_user(connection, nick).unwrap();
+    let user = get_user_from_nick(connection, nick).unwrap();
     let memberships = get_all_user_memberships(connection, user.id).unwrap();
 
     for membership in memberships {
@@ -796,7 +781,7 @@ pub fn get_all_channel_memberships(connection: &mut MysqlConnection, w_id: i32) 
 pub fn create_membership(connection: &mut MysqlConnection, nick: &str, channel: &str) {
     use crate::rirc_schema::memberships;
 
-    let id_user = &get_user(connection, nick).unwrap().id;
+    let id_user = &get_user_from_nick(connection, nick).unwrap().id;
     let id_channel = &get_channel(connection, channel).unwrap().id;
 
     let new_membership = NewMembership { id_user, id_channel };
@@ -807,15 +792,13 @@ pub fn create_membership(connection: &mut MysqlConnection, nick: &str, channel: 
         .expect("Error saving new membership");
 }
 
-/// Function deleting all memberships linked to a certain user's nick.
-pub fn delete_user_membership(connection: &mut MysqlConnection, w_nick: &str) {
+/// Function deleting all memberships linked to a certain `User`.
+pub fn delete_user_membership(connection: &mut MysqlConnection, user: User) {
     use crate::rirc_schema::memberships;
     use crate::rirc_schema::memberships::dsl::*;
 
-    let user_id = get_user(connection, w_nick).unwrap().id;
-
     diesel::delete(memberships::table)
-        .filter(id_user.eq(user_id))
+        .filter(id_user.eq(user.id))
         .execute(connection)
         .expect("Error removing memberships");
 }

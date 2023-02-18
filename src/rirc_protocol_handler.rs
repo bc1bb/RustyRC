@@ -13,8 +13,6 @@ use crate::rirc_message_handler::wait_for_message;
 use std::thread::spawn;
 
 /// Public function handling protocol and sending each requests to the right function depending on the command
-///
-///
 pub fn worker(connection: &mut MysqlConnection, request: Request, addr: String, thread_id: i32, stream: TcpStream) -> Result<Response, IrcError> {
     if is_banned(connection, addr.as_str()) {
         return Err(YoureBannedCreep);
@@ -139,11 +137,12 @@ fn nick(connection: &mut MysqlConnection, content: String, addr: String, thread_
 
     check_nick(connection, nick)?;
 
-    let db_user = get_user(connection, nick);
+    let db_user = get_user_from_nick(connection, nick);
 
     // if user already has a nickname
-    if get_user_from_thread_id(connection, &thread_id).is_ok() {
-        set_connected_from_thread_id(connection, &thread_id, &false).unwrap();
+    match get_user_from_thread_id(connection, &thread_id) {
+        Ok(user) => { set_connected(connection, user, &false) }
+        Err(_) => {}
     }
 
     return match db_user {
@@ -246,7 +245,7 @@ fn privmsg(connection: &mut MysqlConnection, thread_id: i32, content: String) ->
     Ok(Response::no_response())
 }
 
-/// User quitting server.
+/// User quitting server,
 ///
 /// It will broadcast to all channels that user is leaving them.
 fn quit(connection: &mut MysqlConnection, thread_id: i32) -> Result<Response, IrcError> {
@@ -257,9 +256,9 @@ fn quit(connection: &mut MysqlConnection, thread_id: i32) -> Result<Response, Ir
 
     broadcast_as_user(connection, user.nick.as_str(), line.to_string()).unwrap();
 
-    set_connected_from_thread_id(connection, &thread_id, &false).unwrap();
+    set_connected(connection, user.clone(), &false);
 
-    delete_user_membership(connection, user.nick.as_str());
+    delete_user_membership(connection, user);
 
     Ok(Response::new("BYE BYE".to_string()))
 }
@@ -295,17 +294,13 @@ fn user(connection: &mut MysqlConnection, content: String) -> Result<Response, I
         real_name = content_vec[3].to_string();
     }
 
-    // if user doesnt exist
-    let user = get_user(connection, nick);
-    if user.is_err() {
-        return Err(UnknownError)
-    }
-    // if user exist but is not logged in
-    if ! user.unwrap().is_connected {
-        return Err(UnknownError)
-    }
+    // if user doesnt exist or is not logged in
+    let user = match get_user_from_nick(connection, nick) {
+        Ok(user) => { if user.is_connected { user } else { return Err(UnknownError) }}
+        Err(_) => { return  Err(UnknownError) }
+    };
 
-    set_real_name(connection, nick, real_name.as_str()).unwrap();
+    set_real_name(connection, user, real_name.as_str());
 
     Ok(Response::new(":localhost 001 ".to_string() + nick + " :Real name stored..."))
 }
@@ -316,7 +311,7 @@ fn whois(connection: &mut MysqlConnection, content: String, w_thread_id: i32) ->
 
     let sender = get_user_from_thread_id(connection, &w_thread_id).unwrap().nick;
 
-    match get_user(connection, content.as_str()) {
+    match get_user_from_nick(connection, content.as_str()) {
         Ok(user) => {
             if user.is_connected {
                 // User is currently logged in
@@ -339,7 +334,7 @@ fn whowas(connection: &mut MysqlConnection, content: String, w_thread_id: i32) -
 
     let sender = get_user_from_thread_id(connection, &w_thread_id).unwrap().nick;
 
-    match get_user(connection, content.as_str()) {
+    match get_user_from_nick(connection, content.as_str()) {
         Ok(user) => {
             // if user has ever existed
             res.content = res.content + "314 " + user.nick.as_str() + " " + user.nick.as_str() + " " + user.last_ip.as_str() + " " + user.real_name.as_str()
