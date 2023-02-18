@@ -1,15 +1,19 @@
-//! RustyRC Connection Handler
+//! # RustyRC Connection Handler
+//!
+//! File containing functions working on the connection itself.
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
 use diesel::MysqlConnection;
 use log::trace;
 use crate::rirc_lib::*;
-use crate::rirc_lib::Commands::*;
+
 use crate::rirc_lib::IrcError::*;
 use crate::rirc_protocol_handler::*;
 
 /// Public function that handles `TcpStream`,
+/// each lines sent to `handler` are sent to `rirc_protocol_handler::worker()`,
+/// which will try to figure out how to answer to commands.
 ///
 /// Example:
 /// ```rust
@@ -19,7 +23,7 @@ use crate::rirc_protocol_handler::*;
 ///     handler(stream.unwrap())
 /// }
 /// ```
-pub fn handler(connection: &mut MysqlConnection, mut stream: TcpStream, thread_id: i32) {
+pub fn handler(connection: &mut MysqlConnection, stream: TcpStream, thread_id: i32) {
     let addr = stream.peer_addr().unwrap().ip();
 
     loop {
@@ -32,7 +36,6 @@ pub fn handler(connection: &mut MysqlConnection, mut stream: TcpStream, thread_i
             trace!("{}: {}", addr, line.clone());
 
             let request = Request::new(line).unwrap();
-            let mut res = Response::new("".to_string());
 
             match worker(connection, request, addr.to_string(), thread_id, stream.try_clone().unwrap()) {
                 Ok(res) => {
@@ -41,9 +44,12 @@ pub fn handler(connection: &mut MysqlConnection, mut stream: TcpStream, thread_i
 
                     sender(stream.try_clone().unwrap(), res);
                 }
-                Err(err) => {
-                    let res = Response::new(err.to_u32().to_string() + " " + err.to_str());
-                    if err == YoureBannedCreep { return }
+                Err(error) => {
+                    // if error means user is banned, close connection
+                    if error == YoureBannedCreep { return }
+
+                    let res = Response::from_error(error);
+
                     sender(stream.try_clone().unwrap(), res);
                 }
             }
@@ -51,13 +57,15 @@ pub fn handler(connection: &mut MysqlConnection, mut stream: TcpStream, thread_i
     }
 }
 
-/// Simple function `writing` to `TcpStream`,
+/// Simple function `write`ing to `TcpStream`,
 ///
-/// It is making sure that we send our responses with a \n at the end.
+/// - It is making sure that we send our responses with a \n at the end,
+/// - Will not send anything if `response.content` is empty,
+/// - Send a `trace!()` for every line sent.
 pub fn sender(mut stream: TcpStream, response: Response) {
     let line = response.content;
 
-    if line == "0" || line == "" {
+    if line == "" {
         return
     }
 

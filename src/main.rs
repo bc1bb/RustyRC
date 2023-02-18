@@ -26,9 +26,9 @@ fn main() {
     // This gets settings from database to create a `Server`.
     let server = Server::from_settings(get_setting(connection, "ip").unwrap(), get_setting(connection, "port").unwrap());
 
-    let socket = SocketAddr::new(server.get_addr(), server.get_port());
+    let socket = SocketAddr::new(server.addr, server.port);
 
-    info!("Starting listener on {}:{}", server.get_addr(), server.get_port());
+    info!("Starting listener on {}:{}", server.addr, server.port);
     let listener = TcpListener::bind(socket).unwrap();
 
     debug!("Starting connection manager...");

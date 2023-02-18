@@ -1,12 +1,22 @@
+//! # RustyIRC Message Handler
+//!
+//! File containing functions waiting for messages to be sent to user
+//!
+//! Let User A & User B, members of a certain channel,
+//! they will both "own" a thread waiting for messages in the channel,
+//!
+//! Messages sent to a channel are simply a part of the `channels` table (`content`),
+//!
+//! Threads are gonna be looping every .5 secs (thanks to `LoopHelper`), and waiting for new content,
+//! once new content is seen, it's sent to user through the `TcpStream`.
+
 use std::net::TcpStream;
-use std::time::Duration;
 use diesel::MysqlConnection;
-use log::trace;
 use spin_sleep::LoopHelper;
 use crate::rirc_conn_handler::sender;
 use crate::rirc_lib::*;
 
-pub fn wait_for_message(connection: &mut MysqlConnection, mut stream: TcpStream) {
+pub fn wait_for_message(connection: &mut MysqlConnection, stream: TcpStream) {
     // Using spin_sleep::LoopHelper to build a loop
     let mut loop_helper = LoopHelper::builder()
         .report_interval_s(0.5)

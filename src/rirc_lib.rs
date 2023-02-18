@@ -1,4 +1,4 @@
-//! RustyIRC Lib
+//! # RustyIRC Lib
 //!
 //! Shared file containing different structs and public functions for other modules to work.
 //!
@@ -7,8 +7,6 @@
 use std::env;
 use std::net::{IpAddr, Ipv4Addr};
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::vec::IntoIter;
-use diesel::dsl::not;
 use diesel::prelude::*;
 use diesel::mysql::MysqlConnection;
 use dotenvy::dotenv;
@@ -24,8 +22,21 @@ pub struct Response {
 }
 
 impl Response {
+    /// Create a `Response` from `String`.
     pub fn new(content: String) -> Response {
         Response { content }
+    }
+
+    /// Create a `Response` that will be interpreted as no response by `sender()`.
+    pub fn no_response() -> Response {
+        Response { content: "".to_string() }
+    }
+
+    /// Create a `Response` from an `IrcError`.
+    pub fn from_error(error: IrcError) -> Response {
+        let line = error.to_u32().to_string() + " " + error.to_str();
+
+        Response { content: line }
     }
 }
 
@@ -34,7 +45,7 @@ impl Response {
 #[allow(dead_code)]
 pub enum Commands {
     // Supported commands
-    CAP, NICK, PART, PRIVMSG, JOIN, MOTD, NAMES, PING, PONG, QUIT, USER, WHOIS, WHOWAS,
+    CAP, JOIN, MOTD, NAMES, NICK, PART, PING, PONG, PRIVMSG, QUIT, USER, WHOIS, WHOWAS,
 
     SKIP,
 
@@ -55,18 +66,19 @@ impl Commands {
         use self::Commands::*;
         match content {
             "CAP" => Ok(CAP),
-            "NICK" => Ok(NICK),
-            "PART" => Ok(PART),
-            "PRIVMSG" => Ok(PRIVMSG),
             "JOIN" => Ok(JOIN),
             "MOTD" => Ok(MOTD),
             "NAMES" => Ok(NAMES),
+            "NICK" => Ok(NICK),
+            "PART" => Ok(PART),
             "PING" => Ok(PING),
             "PONG" => Ok(PONG),
+            "PRIVMSG" => Ok(PRIVMSG),
             "QUIT" => Ok(QUIT),
             "USER" => Ok(USER),
             "WHOIS" => Ok(WHOIS),
             "WHOWAS" => Ok(WHOWAS),
+
             _ => Ok(SKIP),
         }
     }
@@ -302,8 +314,6 @@ pub fn create_user(connection: &mut MysqlConnection,
                    w_last_login: &i64, w_nick: &str, w_real_name: &str,
                    w_last_ip: &str, w_is_connected: &bool, w_op: &bool,
                    w_thread_id: &i32) {
-    use crate::rirc_schema::users::dsl::*;
-    use crate::rirc_schema::users;
 
     let new_user = NewUser {
         last_login: w_last_login,
@@ -434,9 +444,6 @@ pub fn set_real_name(connection: &mut MysqlConnection,
 pub fn clean_database(connection: &mut MysqlConnection) {
     use crate::rirc_schema::users::dsl::*;
     use crate::rirc_schema::users;
-
-    use crate::rirc_schema::memberships::dsl::*;
-    use crate::rirc_schema::memberships;
 
     diesel::update(users::table)
         .set(is_connected.eq(false))
@@ -773,7 +780,7 @@ pub fn get_all_user_memberships(connection: &mut MysqlConnection, w_id: i32) -> 
 pub fn get_all_channel_memberships(connection: &mut MysqlConnection, w_id: i32) -> Result<Vec<Membership>, Error> {
     use crate::rirc_schema::memberships::dsl::*;
 
-    let mut membership = memberships
+    let membership = memberships
         .filter(id_channel.eq(w_id))
         .load::<Membership>(connection)
         .expect("Error loading memberships");
@@ -800,6 +807,7 @@ pub fn create_membership(connection: &mut MysqlConnection, nick: &str, channel: 
         .expect("Error saving new membership");
 }
 
+/// Function deleting all memberships linked to a certain user's nick.
 pub fn delete_user_membership(connection: &mut MysqlConnection, w_nick: &str) {
     use crate::rirc_schema::memberships;
     use crate::rirc_schema::memberships::dsl::*;
@@ -812,6 +820,7 @@ pub fn delete_user_membership(connection: &mut MysqlConnection, w_nick: &str) {
         .expect("Error removing memberships");
 }
 
+/// Function deleting a certain membership from it's database id.
 pub fn delete_membership(connection: &mut MysqlConnection, w_id: i32) {
     use crate::rirc_schema::memberships;
     use crate::rirc_schema::memberships::dsl::*;
@@ -836,8 +845,8 @@ pub fn first_word(content: &str) -> &str {
 /// ```
 #[derive(Clone, Copy)]
 pub struct Server {
-    addr: IpAddr,
-    port: u16,
+    pub addr: IpAddr,
+    pub port: u16,
 }
 
 #[allow(dead_code)]
@@ -900,19 +909,5 @@ impl Server {
             split_addr[2].to_string().parse().unwrap(),
             split_addr[3].to_string().parse().unwrap(),
         ));
-    }
-
-    pub fn get_addr(self) -> IpAddr {
-        return self.addr;
-    }
-    pub fn get_port(self) -> u16 {
-        return self.port;
-    }
-
-    pub fn set_addr(&mut self, addr: &str) {
-        return self.addr = Server::parse_addr(addr);
-    }
-    pub fn set_port(&mut self, port: u16) {
-        return self.port = port;
     }
 }
