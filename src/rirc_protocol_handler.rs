@@ -42,26 +42,20 @@ fn join(connection: &mut MysqlConnection, thread_id: i32, content: String, strea
     // Expecting message such as
     // JOIN <channel>{,<channel>} [<key>{,<key>}]
 
-    let binding = content.clone(); // ???????? RUST HELLO ???
-    let channel = first_word(&binding);
-
-    if channel.contains(",") {
-        return Err(TooManyChannels)
-    }
-
-    if get_channel(connection, channel).is_err() {
-        return Err(NoSuchChannel)
-    }
+    let channel = match get_channel(connection, first_word(&content.clone())) {
+        Ok(channel) => { channel }
+        Err(_) => { return Err(NoSuchChannel); }
+    };
 
     // Preparing to send a message such as ":WiZ JOIN #Twilight_zone" in the channel
     let user = get_user_from_thread_id(connection, &thread_id).unwrap();
-    let line = create_user_line(user.clone(), "JOIN :") + channel;
+    let line = create_user_line(user.clone(), "JOIN :") + channel.clone().name.as_str();
 
     // Sending
-    add_message(connection, channel, line.as_str()).unwrap();
+    add_message(connection, channel.clone(), line.as_str()).unwrap();
 
     // Add membership to the table, so child thread knows what to do
-    create_membership(connection, user.nick.as_str(), channel);
+    create_membership(connection, user, channel.clone());
 
     spawn(|| {
         let connection = &mut establish_connection();
@@ -71,10 +65,10 @@ fn join(connection: &mut MysqlConnection, thread_id: i32, content: String, strea
     });
 
     // Preparing to return channel's MOTD to user
-    let motd = get_channel(connection, channel).unwrap().motd;
+    let motd = channel.motd;
     let line = "332 :".to_string() + motd.as_str();
 
-    let res = line + "\n" + names(connection, thread_id, channel.to_string()).unwrap().content.as_str();
+    let res = line + "\n" + names(connection, thread_id, channel.name).unwrap().content.as_str();
 
     Ok(Response::new(res))
 }
@@ -195,7 +189,7 @@ fn part(connection: &mut MysqlConnection, thread_id: i32, content: String) -> Re
     }
 
     let line = create_user_line(user, "PART") + channel_str;
-    add_message(connection, channel.name.as_str(), line.as_str()).unwrap();
+    add_message(connection, channel, line.as_str()).unwrap();
 
     Ok(Response::no_response())
 }
@@ -216,13 +210,15 @@ fn privmsg(connection: &mut MysqlConnection, thread_id: i32, content: String) ->
 
     // Testing channel as both #`receiver` and `receiver`
     // Because some irc client add #, some don't :DDDDDD
-    if get_channel(connection, receiver).is_err() {
-        if get_channel(connection, receiver_with_hashtag.as_str()).is_ok() {
-            receiver = receiver_with_hashtag.as_str();
-        } else {
-            return Err(NoSuchChannel)
+    let channel = match get_channel(connection, receiver) {
+        Ok(channel) => { channel }
+        Err(_) => {
+            match get_channel(connection, receiver_with_hashtag.as_str()) {
+                Ok(receiver_with_hashtag) => { receiver_with_hashtag }
+                Err(_) => { return Err(NoSuchChannel); }
+            }
         }
-    }
+    };
 
     let sender = get_user_from_thread_id(connection, &thread_id).unwrap();
 
@@ -240,7 +236,7 @@ fn privmsg(connection: &mut MysqlConnection, thread_id: i32, content: String) ->
         message = message + " ";
     }
 
-    add_message(connection, receiver, &*message)?;
+    add_message(connection, channel, &*message)?;
 
     Ok(Response::no_response())
 }

@@ -400,7 +400,7 @@ pub fn set_connected(connection: &mut MysqlConnection,
     }
 }
 
-/// Public function that sets `real_name` to `w_real_name` from `nick`,
+/// Public function that sets `real_name` to `w_real_name` from `User`,
 ///
 /// Example:
 /// ```rust
@@ -468,7 +468,7 @@ struct NewBan<'a> {
     pub content: &'a str,
 }
 
-/// Public function that will return a `Ban` when given, `is_ip` and `content`,
+/// Public function that will return a `Ban` when given `is_ip` and `content`,
 ///
 /// Example:
 /// ```rust
@@ -514,7 +514,7 @@ pub fn create_ban(connection: &mut MysqlConnection, is_ip: &bool, content: &str)
 }
 
 /// Queryable public struct linked to database using Diesel.
-#[derive(Queryable)]
+#[derive(Queryable,Clone)]
 pub struct Channel {
     pub id: i32,
     pub name: String,
@@ -624,20 +624,15 @@ pub fn create_channel(connection: &mut MysqlConnection, name: &str, creation_tim
 }
 
 /// Function used to add message when user sends PRIVMSG command
-pub fn add_message(connection: &mut MysqlConnection, channel: &str, w_content: &str) -> Result<(), IrcError> {
+pub fn add_message(connection: &mut MysqlConnection, channel: Channel, w_content: &str) -> Result<(), IrcError> {
     use crate::rirc_schema::channels::dsl::*;
     use crate::rirc_schema::channels;
-
-    // Channel doesnt exist
-    if get_channel(connection, channel).is_err() {
-        return Err(NoSuchChannel);
-    }
 
     let line = w_content;
         //(nick.to_string() + " " + w_content);
 
     diesel::update(channels::table)
-        .filter(name.eq(channel))
+        .filter(id.eq(channel.id))
         .set(content.eq(line))
         .execute(connection)
         .expect("Error editing channel");
@@ -651,10 +646,10 @@ pub fn broadcast_as_user(connection: &mut MysqlConnection, nick: &str, w_content
     let memberships = get_all_user_memberships(connection, user.id).unwrap();
 
     for membership in memberships {
-        let channel = get_channel_from_id(connection, &membership.id_channel).unwrap().name;
+        let channel = get_channel_from_id(connection, &membership.id_channel).unwrap();
 
         // cant turn the line into a fucking variable because this language hates me
-        add_message(connection, channel.as_str(), w_content.clone().replace("[channel]", channel.as_str()).as_str()).unwrap();
+        add_message(connection, channel.clone(), w_content.clone().replace("[channel]", channel.name.as_str()).as_str()).unwrap();
     }
 
     Ok(())
@@ -778,13 +773,13 @@ pub fn get_all_channel_memberships(connection: &mut MysqlConnection, w_id: i32) 
 }
 
 /// Public function used to create memberships
-pub fn create_membership(connection: &mut MysqlConnection, nick: &str, channel: &str) {
+pub fn create_membership(connection: &mut MysqlConnection, user: User, channel: Channel) {
     use crate::rirc_schema::memberships;
 
-    let id_user = &get_user_from_nick(connection, nick).unwrap().id;
-    let id_channel = &get_channel(connection, channel).unwrap().id;
-
-    let new_membership = NewMembership { id_user, id_channel };
+    let new_membership = NewMembership {
+        id_user: &user.id,
+        id_channel: &channel.id,
+    };
 
     diesel::insert_into(memberships::table)
         .values(&new_membership)
