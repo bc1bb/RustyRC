@@ -279,33 +279,6 @@ pub fn get_user_from_thread_id<'a>(connection: &mut MysqlConnection,  w_thread_i
     }
 }
 
-/// Public function that will return a `User` when given its `id`,
-///
-/// This function is **unreliable** users might change their database id by changing nicknames !
-/// `thread_id` are more reliable because when users are renamed, it is moved to the new nickname.
-///
-/// Example:
-/// ```rust
-/// let connection = &mut establish_connection();
-/// get_user_from_id(connection, &24);
-/// ```
-pub fn get_user_from_id<'a>(connection: &mut MysqlConnection,  w_id: &i32) -> Result<User, Error> {
-    use crate::rirc_schema::users::dsl::*;
-
-    let mut user = users
-        .limit(1)
-        .filter(id.eq(w_id))
-        .load::<User>(connection)
-        .expect("Error loading users")
-        .into_iter();
-
-    if user.len() > 0 {
-        Ok(user.nth(0).unwrap())
-    } else {
-        Err(NoResultInDatabase)
-    }
-}
-
 /// Public function that handles creating users,
 ///
 /// Example:
@@ -520,7 +493,7 @@ pub struct Channel {
     pub name: String,
     pub creation_time: i32,
     pub creator: String,
-    pub motd: String,
+    pub topic: String,
     pub content: String,
 }
 
@@ -532,7 +505,7 @@ pub struct NewChannel<'a> {
     pub name: &'a str,
     pub creation_time: &'a i32,
     pub creator: &'a str,
-    pub motd: &'a str,
+    pub topic: &'a str,
     pub content: &'a str,
 }
 
@@ -612,10 +585,10 @@ pub fn get_all_channels<'a>(connection: &mut MysqlConnection) -> Result<Vec<Chan
 /// let connection = &mut establish_connection();
 /// create_channel(connection, "world", 1673616716, "system", "Welcome to our cool channel #world", "system: Hello, World");
 /// ```
-pub fn create_channel(connection: &mut MysqlConnection, name: &str, creation_time: &i32, creator: &str, motd: &str, content: &str) {
+pub fn create_channel(connection: &mut MysqlConnection, name: &str, creation_time: &i32, creator: &str, topic: &str, content: &str) {
     use crate::rirc_schema::channels;
 
-    let new_channel = NewChannel { name, creation_time, creator, content, motd };
+    let new_channel = NewChannel { name, creation_time, creator, content, topic };
 
     diesel::insert_into(channels::table)
         .values(&new_channel)
@@ -777,7 +750,7 @@ pub fn create_membership(connection: &mut MysqlConnection, user: User, channel: 
     use crate::rirc_schema::memberships;
 
     let new_membership = NewMembership {
-        id_user: &user.id,
+        id_user: &user.thread_id,
         id_channel: &channel.id,
     };
 

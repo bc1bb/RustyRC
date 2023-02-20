@@ -26,7 +26,7 @@ pub fn wait_for_message(connection: &mut MysqlConnection, stream: TcpStream) {
     let membership = get_last_membership(connection).unwrap();
 
     // fetch corresponding user and channels
-    let user = get_user_from_id(connection, &membership.id_user).unwrap();
+    let user = get_user_from_thread_id(connection, &membership.id_user).unwrap();
     let channel = get_channel_from_id(connection, &membership.id_channel).unwrap();
 
     // store channel's last message

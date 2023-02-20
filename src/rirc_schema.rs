@@ -1,4 +1,4 @@
-//! @generated automatically by Diesel CLI.
+// @generated automatically by Diesel CLI.
 
 diesel::table! {
     bans (id) {
@@ -14,7 +14,7 @@ diesel::table! {
         name -> Char,
         creation_time -> Integer,
         creator -> Char,
-        motd -> Mediumtext,
+        topic -> Mediumtext,
         content -> Longtext,
     }
 }
@@ -47,9 +47,6 @@ diesel::table! {
         thread_id -> Integer,
     }
 }
-
-diesel::joinable!(memberships -> channels (id_channel));
-diesel::joinable!(memberships -> users (id_user));
 
 diesel::allow_tables_to_appear_in_same_query!(
     bans,

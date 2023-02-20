@@ -20,7 +20,7 @@ pub fn worker(connection: &mut MysqlConnection, request: Request, addr: String, 
 
     return match request.command {
         JOIN => join(connection, thread_id, request.clone().content, stream),
-        MOTD => unimplemented(), // TODO
+        MOTD => motd(connection, thread_id), // TODO
         NAMES => names(connection, thread_id, request.clone().content),
         NICK => nick(connection, request.content, addr, thread_id),
         PART => part(connection, thread_id, request.clone().content),
@@ -65,12 +65,21 @@ fn join(connection: &mut MysqlConnection, thread_id: i32, content: String, strea
     });
 
     // Preparing to return channel's MOTD to user
-    let motd = channel.motd;
-    let line = "332 :".to_string() + motd.as_str();
+    let topic = channel.topic;
+    let line = "332 :".to_string() + topic.as_str();
 
     let res = line + "\n" + names(connection, thread_id, channel.name).unwrap().content.as_str();
 
     Ok(Response::new(res))
+}
+
+/// Replying to MOTD commands
+fn motd(connection: &mut MysqlConnection, thread_id: i32) -> Result<Response,IrcError> {
+    // RPL_MOTDSTART: 375
+    // RPL_MOTD: 372
+    // RPL_ENDOFMOTD: 376
+
+    Ok(Response::new("".to_string()))
 }
 
 /// Replying to NAMES commands,
@@ -94,7 +103,7 @@ fn names(connection: &mut MysqlConnection, thread_id: i32, content: String) -> R
             // 353 "<channel> :[[@|+]<nick> [[@|+]<nick> [...]]]"
             res_string = ":localhost 353 ".to_string() + user.nick.as_str() + " = " + channel.name.as_str() + " :";
             for membership in get_all_channel_memberships(connection, channel.id).unwrap() {
-                res_string = res_string + get_user_from_id(connection, &membership.id_user).unwrap().nick.as_str() + " ";
+                res_string = res_string + get_user_from_thread_id(connection, &membership.id_user).unwrap().nick.as_str() + " ";
             }
 
             res_string = res_string + "\n:localhost 366 " + user.nick.as_str() + " " + channel.name.as_str() + " :End of /NAMES list.";
@@ -117,7 +126,7 @@ fn names(connection: &mut MysqlConnection, thread_id: i32, content: String) -> R
     // 353 "<channel> :[[@|+]<nick> [[@|+]<nick> [...]]]"
     res_string = ":localhost 353 ".to_string() + user.nick.as_str() + " = " + channel + " :";
     for membership in get_all_channel_memberships(connection, channel_id).unwrap() {
-        res_string = res_string + get_user_from_id(connection, &membership.id_user).unwrap().nick.as_str() + " ";
+        res_string = res_string + get_user_from_thread_id(connection, &membership.id_user).unwrap().nick.as_str() + " ";
     }
 
     res_string = res_string + "\n:localhost 366 " + user.nick.as_str() + " " + channel + " :End of /NAMES list.";

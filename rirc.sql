@@ -1,4 +1,4 @@
--- MariaDB dump 10.19  Distrib 10.10.2-MariaDB, for osx10.17 (arm64)
+-- MariaDB dump 10.19  Distrib 10.10.3-MariaDB, for osx10.18 (arm64)
 --
 -- Host: localhost    Database: rirc
 -- ------------------------------------------------------
@@ -50,7 +50,7 @@ CREATE TABLE `bans` (
   `is_ip` tinyint(1) NOT NULL,
   `content` char(20) NOT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -77,10 +77,10 @@ CREATE TABLE `channels` (
   `name` char(15) NOT NULL DEFAULT '',
   `creation_time` int(12) NOT NULL,
   `creator` char(11) NOT NULL DEFAULT '',
-  `motd` mediumtext NOT NULL,
+  `topic` mediumtext NOT NULL,
   `content` longtext NOT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -90,8 +90,35 @@ CREATE TABLE `channels` (
 LOCK TABLES `channels` WRITE;
 /*!40000 ALTER TABLE `channels` DISABLE KEYS */;
 INSERT INTO `channels` VALUES
-(1,'informatique',11,'system','Bienvenue sur le salon du service informatique !\nCeci est le premier salon de ce serveur.','oui');
+(1,'#informatique',11,'system','Bienvenue sur le salon du service informatique !\nCeci est le premier salon de ce serveur.',''),
+(2,'#general',11,'system','Salon général','');
 /*!40000 ALTER TABLE `channels` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `memberships`
+--
+
+DROP TABLE IF EXISTS `memberships`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `memberships` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `id_user` int(11) NOT NULL,
+  `id_channel` int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `user` (`id_user`),
+  KEY `channel` (`id_channel`)
+) ENGINE=InnoDB AUTO_INCREMENT=59 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `memberships`
+--
+
+LOCK TABLES `memberships` WRITE;
+/*!40000 ALTER TABLE `memberships` DISABLE KEYS */;
+/*!40000 ALTER TABLE `memberships` ENABLE KEYS */;
 UNLOCK TABLES;
 
 --
@@ -106,7 +133,7 @@ CREATE TABLE `settings` (
   `key` char(11) NOT NULL DEFAULT '',
   `content` text NOT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -118,7 +145,8 @@ LOCK TABLES `settings` WRITE;
 INSERT INTO `settings` VALUES
 (1,'ip','127.0.0.1'),
 (2,'port','6667'),
-(3,'name','CompanyChat');
+(3,'name','CompanyChat'),
+(4,'motd','Bienvenue chez Company');
 /*!40000 ALTER TABLE `settings` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -131,12 +159,15 @@ DROP TABLE IF EXISTS `users`;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `users` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
-  `name` char(11) NOT NULL DEFAULT '',
+  `last_login` bigint(11) NOT NULL,
+  `nick` char(11) NOT NULL DEFAULT '',
+  `real_name` char(25) NOT NULL DEFAULT '',
   `last_ip` char(11) NOT NULL DEFAULT '',
   `is_connected` tinyint(1) NOT NULL,
+  `op` tinyint(1) NOT NULL,
   `thread_id` int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=12 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=40 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -146,7 +177,7 @@ CREATE TABLE `users` (
 LOCK TABLES `users` WRITE;
 /*!40000 ALTER TABLE `users` DISABLE KEYS */;
 INSERT INTO `users` VALUES
-(1,'system','127.0.0.1',0,1);
+(1,0,'system','system','127.0.0.1',0,1,-1);
 /*!40000 ALTER TABLE `users` ENABLE KEYS */;
 UNLOCK TABLES;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
@@ -159,4 +190,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2023-01-18 11:22:09
+-- Dump completed on 2023-02-20 21:12:18

@@ -11,9 +11,6 @@ use log::{debug, info};
 use crate::rirc_lib::*;
 use crate::rirc_conn_handler::handler;
 
-// TODO: STOP RELYING ON USER IDS FOR MEMBERSHIPS AS USER COULD SWITCH NICKS, THEREFORE SWITCHING DATABASE IDs
-// THREAD IDs ARE MORE RELIABLE !!!
-
 /// Main function, holds threads, database connection
 fn main() {
     env_logger::init();
