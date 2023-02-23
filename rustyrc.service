@@ -11,6 +11,7 @@ Environment=RUST_LOG=INFO
 
 ExecStart=/usr/bin/rustyrc
 ExecStop=/bin/kill $(/bin/pidof rustyrc)
+WorkingDirectory=/opt/rustyrc
 
 Restart=always
 RestartSec=3
