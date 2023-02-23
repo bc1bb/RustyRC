@@ -1,0 +1,44 @@
+[Unit]
+Description=Rust IRC Server implementation
+After=network.target
+
+[Service]
+Type=simple
+User=rustyrc
+Group=rustyrc
+
+Environment=RUST_LOG=INFO
+
+ExecStart=/usr/bin/rustyrc
+ExecStop=/bin/kill $(/bin/pidof rustyrc)
+
+Restart=always
+RestartSec=3
+
+# Don't add more privileges
+NoNewPrivileges=yes
+# everything runs in a private directory
+PrivateTmp=yes
+# don't allow acces to external devices
+PrivateDevices=yes
+DevicePolicy=closed
+# restrict access to fs
+ProtectSystem=strict
+PrivateUsers=yes
+# protect Linux Control Group
+ProtectControlGroups=yes
+# prevent kernel module loading
+ProtectKernelModules=yes
+# prevent kernel tunables
+ProtectKernelTunables=yes
+# prevent namespacing
+RestrictNamespaces=yes
+# prevent setting SUID/GUID
+RestrictSUIDSGID=yes
+# protect hw clock
+ProtectClock=yes
+# protect hostname
+ProtectHostname=yes
+
+[Install]
+WantedBy=multi-user.target
