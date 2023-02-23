@@ -54,3 +54,7 @@ VALUES
 INSERT INTO `users` (`id`, `last_login`, `nick`, `real_name`, `last_ip`, `is_connected`, `op`, `thread_id`)
 VALUES
     (1, 0, 'system', 'system', '127.0.0.1', 0, 1, -1);
+
+INSERT INTO `channels` (`id`, `name`, `creation_time`, `creator`, `topic`, `content`)
+VALUES
+    (2, '#general', 11, 'system', 'Salon général', ' ');
